@@ -165,7 +165,7 @@ namespace Gothic_II_Addon
 		parser->CallFunc(setVerFunc);
 		zCPar_Symbol* verSym = parser->GetSymbol("StExt_CurrentModVersionString");
 
-		ModVersionString = Z("Ethernal Breeze " + Z(verSym->stringdata) + " [build - 7.0.2");
+		ModVersionString = Z("Ethernal Breeze " + Z(verSym->stringdata) + " [Build 7.0.3");
 #if DebugEnabled 
 		ModVersionString += Z(" | Debug"); 
 #endif

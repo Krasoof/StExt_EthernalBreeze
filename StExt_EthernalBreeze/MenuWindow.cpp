@@ -47,8 +47,7 @@ namespace Gothic_II_Addon
 
 			if (OnDraw) OnDraw(this);
 		}
-		else
-		{
+		else {
 			// handle child elements?
 		}
 	}

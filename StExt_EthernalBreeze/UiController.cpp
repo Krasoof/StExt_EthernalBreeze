@@ -229,20 +229,22 @@ namespace Gothic_II_Addon
             InitNpcEsBar();
         screen->RemoveItem(npcEsBar);
 
-        int esCur;
-        int esMax;
+        int esCur = 0;
+        int esMax = 0;
+        bool failReadEs = false;
+
         if (FocusNpcEx)
         {
-            GetNpcExtensionVar(FocusNpcEx->m_pVARS[StExt_AiVar_Uid], StExt_AiVar_EsCur, esCur);
-            GetNpcExtensionVar(FocusNpcEx->m_pVARS[StExt_AiVar_Uid], StExt_AiVar_EsMax, esMax);
+            failReadEs |= GetNpcExtensionVar(FocusNpcEx->m_pVARS[StExt_AiVar_Uid], StExt_AiVar_EsCur, esCur);
+            failReadEs |= GetNpcExtensionVar(FocusNpcEx->m_pVARS[StExt_AiVar_Uid], StExt_AiVar_EsMax, esMax);
         }
         else
         {
             esCur = *(int*)parser->CallFunc(NpcGetBarCurEsFunc);
-            esMax = *(int*)parser->CallFunc(NpcGetBarMaxEsFunc);            
+            esMax = *(int*)parser->CallFunc(NpcGetBarMaxEsFunc);
         }
 
-        if ((esMax <= 0) || (FocusNpc && FocusNpc->IsDead()) || !ShowPcEs)
+        if (failReadEs || (esMax <= 0) || (FocusNpc && FocusNpc->IsDead()) || !ShowPcEs)
         {
             npcEsBar->ondesk = false;
             if(npcEsBar) screen->RemoveItem(npcEsBar);

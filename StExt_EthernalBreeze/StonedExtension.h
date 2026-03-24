@@ -152,6 +152,7 @@ namespace Gothic_II_Addon
 	uint FindZStringSorted(const Array<zSTRING>& arr, const zSTRING& key);
 
 	// Npc UId subsystem
+	extern bool IsNpcPointerValid(oCNpc* npc);
 	extern bool IsUidRegistered(int npcUid);
 	extern int GetNextNpcUid();
 	extern int GetNpcUid(oCNpc* npc);

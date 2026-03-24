@@ -481,8 +481,8 @@ namespace Gothic_II_Addon
 	{
 		DamageMeta damageMeta = DamageMeta{};
 
-		damageMeta.Target = target;
-		damageMeta.Attacker = desc.pNpcAttacker;
+		damageMeta.Target = zDYNAMIC_CAST<oCNpc>(target);
+		damageMeta.Attacker = IsNpcPointerValid(desc.pNpcAttacker) ? zDYNAMIC_CAST<oCNpc>(desc.pNpcAttacker) : Null;
 		damageMeta.Weapon = desc.pItemWeapon;
 		SetScriptDamageActors(desc.pNpcAttacker, target, desc.pItemWeapon);
 
@@ -618,6 +618,21 @@ namespace Gothic_II_Addon
 				++foundNpcs;
 			}
 		}
+
+		if (center && player && (center != player))
+		{
+			float dist = center->GetDistanceToVob(*player);
+			if (dist > radius) return foundNpcs;
+			if (targetsList.HasEqual(player)) return foundNpcs;
+
+			parser->SetInstance(StExt_ModSelf_SymId, atk);
+			parser->SetInstance(StExt_ModOther_SymId, player);
+			bool isEnemy = *(int*)parser->CallFunc(damageSelectorFunc);
+			if (isEnemy) {
+				targetsList.Insert(player);
+				++foundNpcs;
+			}
+		}
 		return foundNpcs;
 	}
 
@@ -687,12 +702,13 @@ namespace Gothic_II_Addon
 
 	inline void DoExtraDamage(oCNpc* atk, oCNpc* target, ExtraDamageInfo& extraDam, const ulong flags, const bool hasDamage, const bool hasDotDamage)
 	{
-		if (!target) {
-			DEBUG_MSG("DoExtraDamage: target npc is null! Skipped!");
+		if (!target || !IsNpcPointerValid(target)) {
+			DEBUG_MSG("DoExtraDamage: target npc is null or corrupted! Skipped!");
 			return;
 		}
 		if (target->IsDead() || target->IsUnconscious()) return;
 
+		if (!IsNpcPointerValid(atk)) atk = Null;
 		if (hasDotDamage)
 			AddDotDamage(atk, target, extraDam);
 
@@ -708,7 +724,6 @@ namespace Gothic_II_Addon
 			if (HasFlag(flags, (ulong)DamageDescFlag_ReflectDamage)) DamageExtraParams.DamageFlags |= StExt_DamageFlag_Reflect;
 
 			target->OnDamage(desc);
-			//desc.Release();
 		}
 	}
 
@@ -797,6 +812,7 @@ namespace Gothic_II_Addon
 	void ProcessExtraDamage(oCNpc::oSDamageDescriptor& desc, oCNpc* target)
 	{
 		DEBUG_MSG_DAM("ProcessExtraDamage", "ENTER", desc.pNpcAttacker, target);
+		static int dontKillcheckFuncIndex = parser->GetIndex("StExt_DontKillByExtraDamage_Engine");
 
 		if (!target) {
 			DEBUG_MSG_FUNC("ProcessExtraDamage", "target is null!");
@@ -839,10 +855,30 @@ namespace Gothic_II_Addon
 		int totalHp = target->attribute[0] + GetCurNpcEs(target);
 		if(currentDamageMeta)
 			UpdateDamageInfo(currentDamageMeta->DamageInfo, desc);
+
+		bool humanHitCondition = false;
+		if (target->IsHuman() && (damageReal >= totalHp))
+		{
+			int canKill = *(int*)parser->CallFunc(dontKillcheckFuncIndex);
+			if (!canKill)
+			{
+				damageReal = (totalHp - 1);
+				humanHitCondition = true;
+			}
+		}
+
 		target->ChangeAttribute(NPC_ATR_HITPOINTS, -damageReal);
 		damageReal = totalHp - (target->attribute[0] + GetCurNpcEs(target));
 
 		target->OnDamage_Condition(desc);
+		if (humanHitCondition)
+		{
+			desc.bIsDead = False;
+			if (target->attribute[0] <= 1) {
+				target->attribute[0] = 1;
+				desc.bIsUnconscious = True;
+			}
+		}
 		target->OnDamage_Effects_End(desc);
 		target->OnDamage_Events(desc);
 
@@ -863,11 +899,13 @@ namespace Gothic_II_Addon
 			oSDamageDescriptor& desc = msg->descDamage;
 			if (!IsDamageDescriptorSane(desc))
 			{
+				msg->Delete();
+				msg->Release();
 				DEBUG_MSG("EV_DamagePerFrame_StExt: BREAK: damage descriptor is corrupted!?");
 				return True;
 			}
 
-			if (desc.pNpcAttacker)
+			if (IsNpcPointerValid(this))
 			{
 				DamageMeta& damageMeta = PushDamageMeta(this, desc);
 				damageMeta.DamageInfo.DamageFlags |= StExt_DamageFlag_Dot;
@@ -890,6 +928,11 @@ namespace Gothic_II_Addon
 			return; 
 		}
 
+		if (!IsNpcPointerValid(this))
+		{
+			DEBUG_MSG("OnDamage_StExt: BREAK: target is corrupted!?");
+			return;
+		}
 		if (!IsDamageDescriptorSane(desc))
 		{
 			DEBUG_MSG("OnDamage_StExt: BREAK: damage descriptor is corrupted!?");
@@ -1014,8 +1057,13 @@ namespace Gothic_II_Addon
 	{
 		if ((attrIndex == NPC_ATR_HITPOINTS) && (value < 0))
 		{
+			if (!this || !IsNpcPointerValid(this)) {
+				DEBUG_MSG("ChangeAttribute_StExt: EXIT. Reason: npc is corrupted!");
+				return;
+			}
+
 			if (this->IsDead()) {
-				DEBUG_MSG("ChangeAttribute_StExt: EXIT. Reason: npc already dead");
+				DEBUG_MSG("ChangeAttribute_StExt: EXIT. Reason: npc already dead.");
 				return;
 			}
 
@@ -1053,6 +1101,7 @@ namespace Gothic_II_Addon
 				}
 			}
 
+			if (!IsNpcPointerValid(attaker)) attaker = Null;
 			if (currentDamageInfo.DamageTotal != damage)
 			{
 				DEBUG_MSG("ChangeAttribute_StExt: actual damage and IncomingDamageInfo damages was different! Was: " + Z(currentDamageInfo.DamageTotal));

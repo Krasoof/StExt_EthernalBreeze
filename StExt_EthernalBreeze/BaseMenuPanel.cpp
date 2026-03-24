@@ -21,7 +21,7 @@ namespace Gothic_II_Addon
 	void BaseMenuPanel::ClearItems()
 	{
 		uint elementsCount = Items.GetNum();
-		for (uint i = 0; i < elementsCount; i++) { ClearItem(Items[i], false); }
+		for (uint i = 0; i < elementsCount; ++i) { ClearItem(Items[i], false); }
 		Items.Clear();
 	}
 
@@ -159,6 +159,11 @@ namespace Gothic_II_Addon
 	bool BaseMenuPanel::HandleKey(const UiKeyEventArgs& args)
 	{ 
 		//return (CanInteract() && OnKeyEvent) ? OnKeyEvent(this, args) : false; 
+		for (auto child : Items) 
+		{
+			if (child->IsHiden || !child->IsVisible) continue;
+			if (child->HandleKey(args)) return true;			
+		}
 		return false;
 	}
 

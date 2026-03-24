@@ -53,7 +53,7 @@ namespace Gothic_II_Addon
         if (pluginsCount > 0) {
             for (uint i = 0; i < pluginsCount; ++i)
             {
-                const zSTRING pluginInfo = Z(ModPluginsInfo[i].Name + " [" + ModPluginsInfo[i].Version + "] by " + ModPluginsInfo[i].Author);
+                const zSTRING pluginInfo = Z("  + " + ModPluginsInfo[i].Name + " [" + ModPluginsInfo[i].Version + "] by " + ModPluginsInfo[i].Author);
                 const int pluginInfoSize = ModInfoView->font->GetFontX(pluginInfo);
                 Content.InsertEnd(pluginInfo);
                 if (pluginInfoSize > WidestContentSize)

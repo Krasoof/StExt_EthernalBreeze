@@ -118,6 +118,7 @@ namespace Gothic_II_Addon
 		Hoverable = 1 << 2U,
 		Checkable = 1 << 3U,
 		ForceResize = 1 << 4U,
+		IgnoreBounds = 1 << 5U,
 	};
 
 	inline UiElementBehaviorFlags operator|(UiElementBehaviorFlags a, UiElementBehaviorFlags b)	{
@@ -430,6 +431,9 @@ namespace Gothic_II_Addon
 		virtual void Scroll(int delta);
 		virtual bool HandleMouse(const UiMouseEventArgs& args) override;
 		virtual bool HandleKey(const UiKeyEventArgs& args) override;
+
+		virtual void GetScrollOffset(int& scrollOffset, int& scrollOffsetBefore);
+		virtual void SetScrollOffset(int scrollOffset, int scrollOffsetBefore);
 
 		virtual ~MenuScrollPanel();
 	};

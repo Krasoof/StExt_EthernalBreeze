@@ -81,7 +81,7 @@ namespace Gothic_II_Addon
             return;
         }
 
-        if (!trigger->Self) {
+        if (!IsNpcPointerValid(trigger->Self)) {
             trigger->Self = GetNpcByUid(trigger->ScriptInstance.SelfUId);
             if (!trigger->Self)
             {
@@ -91,7 +91,7 @@ namespace Gothic_II_Addon
             }
         }
 
-        if ((trigger->ScriptInstance.OtherUId != EmptyNpcUId) && (!trigger->Other)) {
+        if ((trigger->ScriptInstance.OtherUId != EmptyNpcUId) && (!IsNpcPointerValid(trigger->Other))) {
             trigger->Other = GetNpcByUid(trigger->ScriptInstance.OtherUId);
             if (!trigger->Other)
             {
@@ -101,8 +101,7 @@ namespace Gothic_II_Addon
             }
         }
 
-        if (trigger->Function == Invalid)
-        {
+        if (trigger->Function == Invalid) {
             trigger->Function = parser->GetIndex(trigger->FunctionName);
             if (trigger->Function == Invalid)
             {

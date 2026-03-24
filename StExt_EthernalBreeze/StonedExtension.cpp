@@ -1255,9 +1255,9 @@ namespace Gothic_II_Addon
         int index; parser->GetParameter(index);
         oCNpc* npc = (oCNpc*)parser->GetInstance();
         oCNpcEx* npcEx = dynamic_cast<oCNpcEx*>(npc);
-        if (!npc && !npcEx)
+        if (!npc || !npcEx)
         {
-            DEBUG_MSG("StExt_GetNpcVar - Npc is null!");
+            DEBUG_MSG("StExt_GetNpcVar (" + Z(index) + ") - Npc is null!");
             parser->SetReturn(Invalid);
             return False;
         }
@@ -1284,9 +1284,9 @@ namespace Gothic_II_Addon
         int index; parser->GetParameter(index);
         oCNpc* npc = (oCNpc*)parser->GetInstance();
         oCNpcEx* npcEx = dynamic_cast<oCNpcEx*>(npc);
-        if (!npc && !npcEx)
+        if (!npc || !npcEx)
         {
-            DEBUG_MSG("StExt_SetNpcVar - Npc is null!");
+            DEBUG_MSG("StExt_SetNpcVar (" + Z(index) + ") - Npc is null!");
             return False;
         }
 

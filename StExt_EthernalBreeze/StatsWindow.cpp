@@ -44,6 +44,15 @@ namespace Gothic_II_Addon
 		zSTRING LpSymbol;
 	};
 
+	struct BonusPanelSectionArgs
+	{
+		uint Id;
+		uint NameIndex;
+		bool HasDuration;
+		int ValueSymArrayIndex;
+		int TimeSymArrayIndex;
+	};
+
 	//----------------------------------------------------------------------
 	//								HANDLERS
 	//----------------------------------------------------------------------
@@ -130,120 +139,166 @@ namespace Gothic_II_Addon
 	}
 
 
-	inline void StatsWindow_OnBonusPanelUpdate_BuildContent(zSTRING& content, uint& contentSize, const zSTRING& valueArrayName, const zSTRING& timeArrayName)
+	inline void StatsWindow_OnBonusPanelUpdate_BuildSectionContent(MenuScrollPanel* panel, const BonusPanelSectionArgs& args, float& yOffset)
 	{
-		const bool hasDuration = !timeArrayName.IsEmpty();
-		const int statsMax = parser->GetSymbol("StExt_PcStats_Index_Max")->single_intdata;
-		const zSTRING secStr = parser->GetSymbol("StExt_Str_Seconds")->stringdata;
+		static const int statsMax = parser->GetSymbol("StExt_PcStats_Index_Max")->single_intdata;
+		static const zSTRING secStr = parser->GetSymbol("StExt_Str_Seconds")->stringdata;
+		static const int statDescSymArrayIndex = parser->GetIndex("StExt_PcStats_Desc");
+		static const int noContentPlaceholderSymIndex = parser->GetIndex("StExt_Str_No");
 
-		zCPar_Symbol* descArray = parser->GetSymbol("StExt_PcStats_Desc");
-		zCPar_Symbol* valueArray = parser->GetSymbol(valueArrayName);
-		zCPar_Symbol* durationArray = parser->GetSymbol(timeArrayName);
+		uint elementsCount = 0;
+		zCPar_Symbol* descArray = parser->GetSymbol(statDescSymArrayIndex);
+		zCPar_Symbol* valueArray = (args.ValueSymArrayIndex != Invalid) ? parser->GetSymbol(args.ValueSymArrayIndex) : Null;
+		zCPar_Symbol* durationArray = (args.HasDuration && (args.TimeSymArrayIndex != Invalid)) ? parser->GetSymbol(args.TimeSymArrayIndex) : Null;
 
-		zSTRING tmpStr;
-		content.Clear();
-		if (!valueArray || !descArray)
+		if (valueArray) 
 		{
-			content = "ERROR!";
-			contentSize = 1;
-			return;
+			for (int i = 0; i < statsMax; ++i)
+			{
+				if (valueArray->intdata[i] == 0) continue;
+				if (durationArray && (durationArray->intdata[i] <= 0)) continue;
+
+				const float posY = yOffset;
+				zSTRING contentText = descArray->stringdata[i] + " " + Z(valueArray->intdata[i]);
+				if (durationArray) contentText += " (" + Z(durationArray->intdata[i]) + secStr + ")";
+
+				MenuItem* contentItem = new MenuItem();
+				contentItem->OnInit = [args, posY, i, contentText](BaseUiElement* item)
+				{
+					item->Name = "BonusTabPanel_SectionContent_" + Z((int)args.Id) + "_" + Z(i);
+					item->SizeX = 0.98f;
+					item->SizeY = 0.03f;
+					item->PosX = 0.01f;
+					item->PosY = posY;
+
+					if (auto* itm = static_cast<MenuItem*>(item))
+					{
+						itm->Text = contentText;
+						itm->BehaviorFlags = UiElementBehaviorFlags::Hoverable | UiElementBehaviorFlags::Interactable;
+						itm->HorizontalAlign = UiContentAlignEnum::Center;
+						itm->VerticalAlign = UiContentAlignEnum::Center;
+					}
+				};
+
+				panel->AddItem(contentItem);
+				yOffset += 0.035f;
+				++elementsCount;
+			}
 		}
 
-		for (int i = 0; i < statsMax; ++i)
+		if (elementsCount == 0) 
 		{
-			if (valueArray->intdata[i] == 0) continue;
-			if (hasDuration && durationArray && durationArray->intdata[i] <= 0) continue;
+			const float posY = yOffset;
+			MenuItem* contentItem = new MenuItem();
+			contentItem->OnInit = [args, posY](BaseUiElement* item)
+			{
+				item->Name = "BonusTabPanel_SectionContent_" + Z((int)args.Id) + "_Empty";
+				item->SizeX = 0.98f;
+				item->SizeY = 0.03f;
+				item->PosX = 0.01f;
+				item->PosY = posY;
 
-			tmpStr = !hasDuration ? descArray->stringdata[i] + " " + Z(valueArray->intdata[i]) :
-				descArray->stringdata[i] + " " + Z(valueArray->intdata[i]) + " (" + Z(durationArray->intdata[i]) + secStr + ")";
-			content += tmpStr + "\n";
-		}
+				if (auto* itm = static_cast<MenuItem*>(item))
+				{
+					itm->Text = parser->GetSymbol(noContentPlaceholderSymIndex)->stringdata;
+					itm->BehaviorFlags = UiElementBehaviorFlags::Hoverable | UiElementBehaviorFlags::Interactable;
+					itm->HorizontalAlign = UiContentAlignEnum::Center;
+					itm->VerticalAlign = UiContentAlignEnum::Center;
+				}
+			};
 
-		if (content.IsEmpty())
-		{
-			content = parser->GetSymbol("StExt_Str_No")->stringdata;
-			contentSize = 1;
+			panel->AddItem(contentItem);
+			yOffset += 0.035f;
 		}
 	}
 
-#define STEXT_STATSWINDOW_ONBONUSUPDATE_FIND_HEADER(index, name, itm) if(itm && (itm->Name == name)) { headerItems[index] = static_cast<MenuItem*>(itm); }
-#define STEXT_STATSWINDOW_ONBONUSUPDATE_FIND_CONTENT(index, name, itm) if(itm && (itm->Name == name)) { contentItems[index] = static_cast<MenuTextItem*>(itm); }
+	inline void StatsWindow_OnBonusPanelUpdate_BuildSection(MenuScrollPanel* panel, const BonusPanelSectionArgs& args, float& yOffset)
+	{
+		static int headerNameSymIndex = parser->GetIndex("StExt_BonusStats_Desc");
+
+		const float posY = yOffset;
+		MenuItem* titleItem = new MenuItem();
+		titleItem->OnInit = [args, posY](BaseUiElement* item)
+		{
+			item->Name = "BonusTabPanel_SectionTitle_" + Z((int)args.Id);
+			item->SizeX = 0.98f;
+			item->SizeY = 0.08f;
+			item->PosX = 0.01f;
+			item->PosY = posY;
+
+			if (auto* itm = static_cast<MenuItem*>(item))
+			{
+				itm->Text = parser->GetSymbol(headerNameSymIndex)->stringdata[args.NameIndex];
+				itm->TextColor_Default = TextColor_Header_Default;
+				itm->TextColor_Hovered = TextColor_Header_Hovered;
+				itm->TextColor_Selected = TextColor_Header_Selected;
+				itm->TextColor_Disabled = TextColor_Header_Disabled;
+				itm->Font = MenuFont_Header;
+				itm->BehaviorFlags = UiElementBehaviorFlags::Hoverable | UiElementBehaviorFlags::Interactable;
+				itm->HorizontalAlign = UiContentAlignEnum::Center;
+				itm->VerticalAlign = UiContentAlignEnum::Center;
+			}
+		};
+		panel->AddItem(titleItem);
+		yOffset += 0.09f;
+
+		StatsWindow_OnBonusPanelUpdate_BuildSectionContent(panel, args, yOffset);
+	}
+
+	inline void StatsWindow_OnBonusPanelUpdate_InitializeSections(Array<BonusPanelSectionArgs>& sectionArgs)
+	{
+		sectionArgs.Clear();
+
+		// Alchemy
+		sectionArgs.Insert(BonusPanelSectionArgs { 0U, 2U, true, parser->GetIndex("StExt_PcStats_Alchemy"), parser->GetIndex("StExt_PcStats_Alchemy_Cooldown") });
+		// Effects
+		sectionArgs.Insert(BonusPanelSectionArgs { 1U, 3U, true, parser->GetIndex("StExt_PcStats_Buffs"), parser->GetIndex("StExt_PcStats_Buffs_Cooldown") });
+		// Auras
+		sectionArgs.Insert(BonusPanelSectionArgs { 2U, 4U, false, parser->GetIndex("StExt_PcStats_Auras"), Invalid });
+		// Artifacts
+		sectionArgs.Insert(BonusPanelSectionArgs { 3U, 1U, false, parser->GetIndex("StExt_PcStats_Grimoir"), Invalid });
+		sectionArgs.Insert(BonusPanelSectionArgs { 4U, 1U, false, parser->GetIndex("StExt_PcStats_Dagger"), Invalid });
+		sectionArgs.Insert(BonusPanelSectionArgs { 5U, 1U, false, Invalid, Invalid });
+		// Items
+		sectionArgs.Insert(BonusPanelSectionArgs { 6U, 0U, false, parser->GetIndex("StExt_PcStats_Items"), Invalid });
+	}
+
 	void StatsWindow_OnBonusPanelUpdate(BaseUiElement* panel)
 	{
 		if (!panel || !Instance) return;
+		static int artEquippedSymIndex = parser->GetIndex("StExt_ArtifactEquipped");
 
 		static int updateCounter = 0;
-		++updateCounter;
-		if (updateCounter > 10) updateCounter = 0;
-		else return;
+		if (++updateCounter <= 25) return;
+		updateCounter = 0;
 
-		BaseMenuPanel* container = static_cast<BaseMenuPanel*>(panel);
+		MenuScrollPanel* container = static_cast<MenuScrollPanel*>(panel);
 		if (!container) return;
 
-		const uint sectionsCount = 5U;
-		const uint alchemySectionIndex = 0U;
-		const uint effectsSectionIndex = 1U;
-		const uint aurasSectionIndex = 2U;
-		const uint artifactSectionIndex = 3U;
-		const uint itemsSectionIndex = 4U;
+		static Array<BonusPanelSectionArgs> sectionArgs;
+		if (sectionArgs.IsEmpty())
+			StatsWindow_OnBonusPanelUpdate_InitializeSections(sectionArgs);
 
-		const int artType = parser->GetSymbol("StExt_ArtifactEquipped")->single_intdata;
-		const float yOffsetForLine = 0.03f;
-		const float yOffsetForHeader = 0.05f;
-		float yOffset = yOffsetForHeader;
+		const int artType = parser->GetSymbol(artEquippedSymIndex)->single_intdata;
+		const bool hasArt = (artType == StExt_ArtifactIndex_Grimoir) || (artType == StExt_ArtifactIndex_Dagger);
+		float yOffset = 0.01f;
+		int scrollOffset, scrollOffsetBefore;
+		container->GetScrollOffset(scrollOffset, scrollOffsetBefore);
 
-		MenuItem* headerItems[sectionsCount];
-		MenuTextItem* contentItems[sectionsCount];
-		zSTRING content[sectionsCount];
-		uint contentSize[sectionsCount];
-
-		for (auto childItm : container->Items)
+		container->ClearItems();
+		const uint sectionsCount = sectionArgs.GetNum();
+		for (auto& args : sectionArgs) 
 		{
-			STEXT_STATSWINDOW_ONBONUSUPDATE_FIND_HEADER(aurasSectionIndex, "BonusTabPanel_AurasTitle", childItm)
-			STEXT_STATSWINDOW_ONBONUSUPDATE_FIND_CONTENT(aurasSectionIndex, "BonusTabPanel_AurasContent", childItm)
+			if ((args.Id == 3U) && (artType != StExt_ArtifactIndex_Grimoir)) continue;
+			if ((args.Id == 4U) && (artType != StExt_ArtifactIndex_Dagger)) continue;
+			if ((args.Id == 5U) && hasArt) continue;
 
-			STEXT_STATSWINDOW_ONBONUSUPDATE_FIND_HEADER(effectsSectionIndex, "BonusTabPanel_EffectsTitle", childItm)
-			STEXT_STATSWINDOW_ONBONUSUPDATE_FIND_CONTENT(effectsSectionIndex, "BonusTabPanel_EffectsContent", childItm)
-
-			STEXT_STATSWINDOW_ONBONUSUPDATE_FIND_HEADER(alchemySectionIndex, "BonusTabPanel_AlchemyTitle", childItm)
-			STEXT_STATSWINDOW_ONBONUSUPDATE_FIND_CONTENT(alchemySectionIndex, "BonusTabPanel_AlchemyContent", childItm)
-
-			STEXT_STATSWINDOW_ONBONUSUPDATE_FIND_HEADER(artifactSectionIndex, "BonusTabPanel_ArtifactTitle", childItm)
-			STEXT_STATSWINDOW_ONBONUSUPDATE_FIND_CONTENT(artifactSectionIndex, "BonusTabPanel_ArtifactContent", childItm)
-
-			STEXT_STATSWINDOW_ONBONUSUPDATE_FIND_HEADER(itemsSectionIndex, "BonusTabPanel_ItemsTitle", childItm)
-			STEXT_STATSWINDOW_ONBONUSUPDATE_FIND_CONTENT(itemsSectionIndex, "BonusTabPanel_ItemsContent", childItm)
+			StatsWindow_OnBonusPanelUpdate_BuildSection(container, args, yOffset);
+			yOffset += 0.05f;
 		}
 
-		StatsWindow_OnBonusPanelUpdate_BuildContent(content[itemsSectionIndex], contentSize[itemsSectionIndex], "StExt_PcStats_Items", "");
-		StatsWindow_OnBonusPanelUpdate_BuildContent(content[alchemySectionIndex], contentSize[alchemySectionIndex], "StExt_PcStats_Alchemy", "StExt_PcStats_Alchemy_Cooldown");
-		StatsWindow_OnBonusPanelUpdate_BuildContent(content[effectsSectionIndex], contentSize[effectsSectionIndex], "StExt_PcStats_Buffs", "StExt_PcStats_Buffs_Cooldown");
-		StatsWindow_OnBonusPanelUpdate_BuildContent(content[aurasSectionIndex], contentSize[aurasSectionIndex], "StExt_PcStats_Auras", "");
-
-		if (artType == StExt_ArtifactIndex_Grimoir)
-			StatsWindow_OnBonusPanelUpdate_BuildContent(content[artifactSectionIndex], contentSize[artifactSectionIndex], "StExt_PcStats_Grimoir", "");
-		else if (artType == StExt_ArtifactIndex_Dagger)
-			StatsWindow_OnBonusPanelUpdate_BuildContent(content[artifactSectionIndex], contentSize[artifactSectionIndex], "StExt_PcStats_Dagger", "");
-		else
-		{
-			content[artifactSectionIndex] = parser->GetSymbol("StExt_Str_No")->stringdata;
-			contentSize[artifactSectionIndex] = 1U;
-		}
-
-		for (uint i = 0; i < sectionsCount; ++i)
-		{
-			if (!contentItems[i] || !headerItems[i]) continue;
-
-			const float contentSizeY = static_cast<float>(contentSize[i] * yOffsetForLine);
-			headerItems[i]->PosY = yOffset;
-			yOffset += headerItems[i]->SizeY + 0.01f;
-
-			contentItems[i]->PosY = yOffset;
-			contentItems[i]->SizeY = contentSizeY;
-			contentItems[i]->Text = content[i];
-
-			yOffset += contentSizeY + yOffsetForHeader;
-		}
+		container->Init();
+		container->SetScrollOffset(scrollOffset, Invalid);
 	}
 
 	//----------------------------------------------------------------------
@@ -1214,228 +1269,8 @@ namespace Gothic_II_Addon
 			item->PosY = 0.11f;
 			item->BgTexture = UiElement_PanelNoBorderTexture;
 			item->OnUpdate = StatsWindow_OnBonusPanelUpdate;
-			
-			if (auto* itm = static_cast<MenuScrollPanel*>(item))
-			{
-				//itm->BehaviorFlags = UiElementBehaviorFlags::ForceResize;
-			}
 		};
 		AddItem(BonusTabPanel);
-
-		// Items section
-		MenuItem* itemsTitleItem = new MenuItem();
-		itemsTitleItem->OnInit = [](BaseUiElement* item)
-		{
-			item->Name = "BonusTabPanel_ItemsTitle";
-			item->SizeX = 0.98f;
-			item->SizeY = 0.07f;
-			item->PosX = 0.01f;
-			item->PosY = 0.02f;
-
-			if (auto* itm = static_cast<MenuItem*>(item))
-			{
-				itm->Text = parser->GetSymbol("StExt_BonusStats_Desc")->stringdata[0];
-				itm->TextColor_Default = TextColor_Header_Default;
-				itm->TextColor_Hovered = TextColor_Header_Hovered;
-				itm->TextColor_Selected = TextColor_Header_Selected;
-				itm->TextColor_Disabled = TextColor_Header_Disabled;
-				itm->Font = MenuFont_Header;
-				itm->BehaviorFlags = UiElementBehaviorFlags::Hoverable | UiElementBehaviorFlags::Interactable;
-				itm->HorizontalAlign = UiContentAlignEnum::Center;
-				itm->VerticalAlign = UiContentAlignEnum::Center;
-			}
-		};
-		MenuTextItem* itemsContentItem = new MenuTextItem();
-		itemsContentItem->OnInit = [](BaseUiElement* item)
-		{
-			item->Name = "BonusTabPanel_ItemsContent";
-			item->SizeX = 0.98f;
-			item->SizeY = 0.20f;
-			item->PosX = 0.01f;
-			item->PosY = 0.02f;
-
-			if (auto* itm = static_cast<MenuTextItem*>(item))
-			{
-				itm->Text = "";
-				itm->BehaviorFlags = UiElementBehaviorFlags::Hoverable | UiElementBehaviorFlags::Interactable;
-				itm->HorizontalAlign = UiContentAlignEnum::Center;
-				itm->VerticalAlign = UiContentAlignEnum::Center;
-			}
-		};
-		BonusTabPanel->AddItem(itemsTitleItem);
-		BonusTabPanel->AddItem(itemsContentItem);
-
-		// Artifacts section
-		MenuItem* artifactTitleItem = new MenuItem();
-		artifactTitleItem->OnInit = [](BaseUiElement* item)
-		{
-			item->Name = "BonusTabPanel_ArtifactTitle";
-			item->SizeX = 0.98f;
-			item->SizeY = 0.07f;
-			item->PosX = 0.01f;
-			item->PosY = 0.02f;
-
-			if (auto* itm = static_cast<MenuItem*>(item))
-			{
-				itm->Text = parser->GetSymbol("StExt_BonusStats_Desc")->stringdata[1];
-				itm->TextColor_Default = TextColor_Header_Default;
-				itm->TextColor_Hovered = TextColor_Header_Hovered;
-				itm->TextColor_Selected = TextColor_Header_Selected;
-				itm->TextColor_Disabled = TextColor_Header_Disabled;
-				itm->Font = MenuFont_Header;
-				itm->BehaviorFlags = UiElementBehaviorFlags::Hoverable | UiElementBehaviorFlags::Interactable;
-				itm->HorizontalAlign = UiContentAlignEnum::Center;
-				itm->VerticalAlign = UiContentAlignEnum::Center;
-			}
-		};
-		MenuTextItem* artifactContentItem = new MenuTextItem();
-		artifactContentItem->OnInit = [](BaseUiElement* item)
-		{
-			item->Name = "BonusTabPanel_ArtifactContent";
-			item->SizeX = 0.98f;
-			item->SizeY = 0.20f;
-			item->PosX = 0.01f;
-			item->PosY = 0.02f;
-
-			if (auto* itm = static_cast<MenuTextItem*>(item))
-			{
-				itm->Text = "";
-				itm->BehaviorFlags = UiElementBehaviorFlags::Hoverable | UiElementBehaviorFlags::Interactable;
-				itm->HorizontalAlign = UiContentAlignEnum::Center;
-				itm->VerticalAlign = UiContentAlignEnum::Center;
-			}
-		};
-		BonusTabPanel->AddItem(artifactTitleItem);
-		BonusTabPanel->AddItem(artifactContentItem);
-
-		// Alchemy section
-		MenuItem* alchemyTitleItem = new MenuItem();
-		alchemyTitleItem->OnInit = [](BaseUiElement* item)
-		{
-			item->Name = "BonusTabPanel_AlchemyTitle";
-			item->SizeX = 0.98f;
-			item->SizeY = 0.07f;
-			item->PosX = 0.01f;
-			item->PosY = 0.02f;
-
-			if (auto* itm = static_cast<MenuItem*>(item))
-			{
-				itm->Text = parser->GetSymbol("StExt_BonusStats_Desc")->stringdata[2];
-				itm->TextColor_Default = TextColor_Header_Default;
-				itm->TextColor_Hovered = TextColor_Header_Hovered;
-				itm->TextColor_Selected = TextColor_Header_Selected;
-				itm->TextColor_Disabled = TextColor_Header_Disabled;
-				itm->Font = MenuFont_Header;
-				itm->BehaviorFlags = UiElementBehaviorFlags::Hoverable | UiElementBehaviorFlags::Interactable;
-				itm->HorizontalAlign = UiContentAlignEnum::Center;
-				itm->VerticalAlign = UiContentAlignEnum::Center;
-			}
-		};
-		MenuTextItem* alchemyContentItem = new MenuTextItem();
-		alchemyContentItem->OnInit = [](BaseUiElement* item)
-		{
-			item->Name = "BonusTabPanel_AlchemyContent";
-			item->SizeX = 0.98f;
-			item->SizeY = 0.20f;
-			item->PosX = 0.01f;
-			item->PosY = 0.02f;
-
-			if (auto* itm = static_cast<MenuTextItem*>(item))
-			{
-				itm->Text = "";
-				itm->BehaviorFlags = UiElementBehaviorFlags::Hoverable | UiElementBehaviorFlags::Interactable;
-				itm->HorizontalAlign = UiContentAlignEnum::Center;
-				itm->VerticalAlign = UiContentAlignEnum::Center;
-			}
-		};
-		BonusTabPanel->AddItem(alchemyTitleItem);
-		BonusTabPanel->AddItem(alchemyContentItem);
-
-		// Effects section
-		MenuItem* effectsTitleItem = new MenuItem();
-		effectsTitleItem->OnInit = [](BaseUiElement* item)
-		{
-			item->Name = "BonusTabPanel_EffectsTitle";
-			item->SizeX = 0.98f;
-			item->SizeY = 0.07f;
-			item->PosX = 0.01f;
-			item->PosY = 0.02f;
-
-			if (auto* itm = static_cast<MenuItem*>(item))
-			{
-				itm->Text = parser->GetSymbol("StExt_BonusStats_Desc")->stringdata[3];
-				itm->TextColor_Default = TextColor_Header_Default;
-				itm->TextColor_Hovered = TextColor_Header_Hovered;
-				itm->TextColor_Selected = TextColor_Header_Selected;
-				itm->TextColor_Disabled = TextColor_Header_Disabled;
-				itm->Font = MenuFont_Header;
-				itm->BehaviorFlags = UiElementBehaviorFlags::Hoverable | UiElementBehaviorFlags::Interactable;
-				itm->HorizontalAlign = UiContentAlignEnum::Center;
-				itm->VerticalAlign = UiContentAlignEnum::Center;
-			}
-		};
-		MenuTextItem* effectsContentItem = new MenuTextItem();
-		effectsContentItem->OnInit = [](BaseUiElement* item)
-		{
-			item->Name = "BonusTabPanel_EffectsContent";
-			item->SizeX = 0.98f;
-			item->SizeY = 0.20f;
-			item->PosX = 0.01f;
-			item->PosY = 0.02f;
-
-			if (auto* itm = static_cast<MenuTextItem*>(item))
-			{
-				itm->Text = "";
-				itm->BehaviorFlags = UiElementBehaviorFlags::Hoverable | UiElementBehaviorFlags::Interactable;
-				itm->HorizontalAlign = UiContentAlignEnum::Center;
-				itm->VerticalAlign = UiContentAlignEnum::Center;
-			}
-		};
-		BonusTabPanel->AddItem(effectsTitleItem);
-		BonusTabPanel->AddItem(effectsContentItem);
-
-		// Auras section
-		MenuItem* aurasTitleItem = new MenuItem();
-		aurasTitleItem->OnInit = [](BaseUiElement* item)
-		{
-			item->Name = "BonusTabPanel_AurasTitle";
-			item->SizeX = 0.98f;
-			item->SizeY = 0.07f;
-			item->PosX = 0.01f;
-			item->PosY = 0.02f;
-
-			if (auto* itm = static_cast<MenuItem*>(item))
-			{
-				itm->Text = parser->GetSymbol("StExt_BonusStats_Desc")->stringdata[4];
-				itm->TextColor_Default = TextColor_Header_Default;
-				itm->TextColor_Hovered = TextColor_Header_Hovered;
-				itm->TextColor_Selected = TextColor_Header_Selected;
-				itm->TextColor_Disabled = TextColor_Header_Disabled;
-				itm->Font = MenuFont_Header;
-				itm->BehaviorFlags = UiElementBehaviorFlags::Hoverable | UiElementBehaviorFlags::Interactable;
-				itm->HorizontalAlign = UiContentAlignEnum::Center;
-				itm->VerticalAlign = UiContentAlignEnum::Center;
-			}
-		};
-		MenuTextItem* aurasContentItem = new MenuTextItem();
-		aurasContentItem->OnInit = [](BaseUiElement* item)
-		{
-			item->Name = "BonusTabPanel_AurasContent";
-			item->SizeX = 0.98f;
-			item->SizeY = 0.20f;
-			item->PosX = 0.01f;
-			item->PosY = 0.02f;
-
-			if (auto* itm = static_cast<MenuTextItem*>(item))
-			{
-				itm->Text = "";
-				itm->BehaviorFlags = UiElementBehaviorFlags::Hoverable | UiElementBehaviorFlags::Interactable;
-				itm->HorizontalAlign = UiContentAlignEnum::Center;
-				itm->VerticalAlign = UiContentAlignEnum::Center;
-			}
-		};
-		BonusTabPanel->AddItem(aurasTitleItem);
-		BonusTabPanel->AddItem(aurasContentItem);
 		BonusTabPanel->Init();
 	}
 

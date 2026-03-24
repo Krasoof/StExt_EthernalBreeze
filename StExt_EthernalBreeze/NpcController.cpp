@@ -6,6 +6,22 @@ namespace Gothic_II_Addon
     uint NpcExtensionCount;
     int LastNpcUid;
 
+    inline bool IsNpcPointerValid(oCNpc* npc)
+    {
+        if (!npc) return false;
+
+        zCWorld* world = ogame->GetGameWorld();
+        if (!world) return false;
+        if (world->SearchVob((zCVob*)npc, Null) == Null) return false;
+
+        oCNpc* realNpc = zDYNAMIC_CAST<oCNpc>((zCObject*)npc);
+        if (!realNpc) return false;
+
+        if (realNpc->GetInstanceName().IsEmpty()) return false;
+        if (!realNpc->homeWorld) return false;
+
+        return true;
+    }
 
     inline bool IsUidRegistered(const int npcUid) { return NpcExtensionData.GetSafePair(npcUid) != Null; }
     inline bool IsUidValid(const int npcUid) { return (npcUid != 0 && npcUid != Invalid); }
@@ -65,7 +81,11 @@ namespace Gothic_II_Addon
 
     void RegisterNpc(oCNpc* npc, int& npcUid)
     {
-        if (!npc) return;
+        if (!npc)
+        {
+            DEBUG_MSG("RegisterNpc - Try register Null or corrupted npc!");
+            return;
+        }
 
         oCNpcEx* npcEx = dynamic_cast<oCNpcEx*>(npc);
         if (!npcEx) { DEBUG_MSG("RegisterNpc - fail convert '" + npc->name[0] + "' to oCNpcEx!"); return; }
@@ -96,6 +116,13 @@ namespace Gothic_II_Addon
         }
 
         const zSTRING incomingNpcInstanceName = npc->GetInstanceName();
+        if (incomingNpcInstanceName.IsEmpty())
+        {
+            DEBUG_MSG("RegisterNpc - Try register npc without instance!? Instance name: '" + Z(incomingNpcInstanceName) + "' | Object name: '" +
+                Z(npc->GetObjectName()) + "' | VobInfo: " + Z(npc->GetVobInfo()));            
+            return;
+        }
+
         const int incomingNpcUid = npcEx->m_pVARS[StExt_AiVar_Uid];
         if (IsUidValid(incomingNpcUid))
         {
@@ -131,9 +158,9 @@ namespace Gothic_II_Addon
         const int newUid = GetNextNpcUid();
         npcUid = npc->IsSelfPlayer() ? 0 : newUid;
         npcEx->m_pVARS[StExt_AiVar_Uid] = newUid;
-        AddNewNpcRecord(newUid, npc->GetInstanceName(), npc);
+        AddNewNpcRecord(newUid, incomingNpcInstanceName, npc);
         NpcExtensionCount = NpcExtensionData.GetNum();
-        DEBUG_MSG("RegisterNpc - Assigned NEW UId " + Z(newUid) + " to '" + npc->GetInstanceName() + " [" + npc->name[0] + "]'");
+        DEBUG_MSG("RegisterNpc - Assigned NEW UId " + Z(newUid) + " to '" + Z(incomingNpcInstanceName) + " [" + npc->name[0] + "]'");
     }
 
     inline oCNpc* GetNpcByUid(const int npcUid)
@@ -157,7 +184,11 @@ namespace Gothic_II_Addon
             return Null;
         }
 
-        if (!npcExt->NpcPtr) return Null;
+        if (!IsNpcPointerValid(npcExt->NpcPtr))
+        {
+            DEBUG_MSG("GetNpcByUid - Fail retrieve Npc with UId: " + Z(npcUid) + " - pointer is not valid!");
+            return Null;
+        }
         return npcExt->NpcPtr;
     }
         
@@ -313,6 +344,12 @@ namespace Gothic_II_Addon
             ar->ReadString("InstanceName", npcExt->InstanceName);
             ar->ReadRaw("NpcStats", &npcExt->Stats, sizeof(npcExt->Stats));
             npcExt->NpcPtr = Null;
+
+            if (npcExt->InstanceName.IsEmpty())
+            {
+                DEBUG_MSG("LoadNpcExtensions: fail to load npc without instance! UId: " + Z(npcExt->NpcUid));
+                continue;
+            }
             NpcExtensionData.Insert(npcExt->NpcUid, npcExt);
             ++loadedNpcExtension;
         }
@@ -335,6 +372,7 @@ namespace Gothic_II_Addon
     {
         THISCALL(Hook_oCNpc_InitByScript)(instance, inSaveGame);
         if (IsLoading || IsLevelChanging) return;
+        //if (!IsNpcPointerValid(this)) return;
 
         oCNpcEx* npcEx = dynamic_cast<oCNpcEx*>(this);
         if (!npcEx)
@@ -368,6 +406,7 @@ namespace Gothic_II_Addon
     void oCNpc::ProcessNpc_StExt()
     {
         THISCALL(Hook_oCNpc_ProcessNpc)();
+        //if (!IsNpcPointerValid(this)) return;
 
         if (this && !this->IsDead())
         {

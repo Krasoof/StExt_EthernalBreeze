@@ -32,23 +32,14 @@ namespace Gothic_II_Addon
             BaseMenuElement* item = Items[i];
             if (!item) continue;
 
-            if (ScrollOffset != ScrollOffsetBefore || HasBehavior(UiElementBehaviorFlags::ForceResize))
+            if (ScrollOffset != ScrollOffsetBefore)
             {
                 item->PosY = item->InitialPosY - scrollOffsetAbs;
                 item->Resize();
 
                 int itemTop = item->GlobalPosY;
                 int itemBottom = itemTop + item->GlobalSizeY;
-                item->IsVisible = (itemTop >= panelTop) && (itemBottom <= panelBottom);
-
-                /*
-                if (!item->IsVisible && item->View)
-                {
-                    item->View->Blit();
-                    item->View->ClrPrintwin();
-                    if (View)
-                        View->RemoveItem(item->View);
-                }*/
+                item->IsVisible = ((itemTop >= panelTop) && (itemBottom <= panelBottom));
 
                 if (item->IsVisible)
                 {
@@ -64,15 +55,6 @@ namespace Gothic_II_Addon
                         View->RemoveItem(item->View);
                     }
                 }
-                
-                /*
-                DEBUG_MSG("Update ScrollPanel Item[" + Z((int)i) + "] '" + Z(item->Name.c_str()) +
-                    "' rect: [x=" + Z(item->GlobalPosX) + ";y=" + Z(item->GlobalPosY) + ";w=" + Z(item->GlobalSizeX) + ";h=" + Z(item->GlobalSizeY) + "]" +
-                    " Hiden: " + Z((int)item->IsVisible));
-                DEBUG_MSG("Update ScrollPanel Item[" + Z((int)i) + "] '" + Z(item->Name.c_str()) +
-                    "' rrect: [x=" + Z(item->PosX) + ";y=" + Z(item->PosY) + ";w=" + Z(item->SizeX) + ";h=" + Z(item->SizeY) + "]" +
-                    " Parent: " + Z((int)(item->Parent != Null)));
-                */
             }
             item->Update();
         }
@@ -124,7 +106,27 @@ namespace Gothic_II_Addon
         return BaseMenuPanel::HandleMouse(args);
     }
 
-    bool MenuScrollPanel::HandleKey(const UiKeyEventArgs& args) { return false; }
+    bool MenuScrollPanel::HandleKey(const UiKeyEventArgs& args) 
+    { 
+        int scrollDelta = 0;
+        if (args.Action == UiKeyEnum::Down)
+            scrollDelta = static_cast<int>((-128 * ModMenuWindow_ScrollShiftMult) * ModMenuWindow_ScrollMult);
+        if (args.Action == UiKeyEnum::Up)
+            scrollDelta = static_cast<int>((128 * ModMenuWindow_ScrollShiftMult) * ModMenuWindow_ScrollMult);
+
+        if (scrollDelta != 0) {
+            Scroll(scrollDelta);
+            return true;
+        }
+        return false; 
+    }
+
+    void MenuScrollPanel::GetScrollOffset(int& scrollOffset, int& scrollOffsetBefore) { scrollOffset = ScrollOffset; scrollOffsetBefore = ScrollOffsetBefore; }
+    void MenuScrollPanel::SetScrollOffset(int scrollOffset, int scrollOffsetBefore)
+    {
+        ScrollOffset = ValidateValue(scrollOffset, 0, ScrollCanvasSize);
+        ScrollOffsetBefore = scrollOffsetBefore;
+    }
 
     MenuScrollPanel::~MenuScrollPanel() { }
 }

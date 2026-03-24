@@ -6,11 +6,13 @@ namespace Gothic_II_Addon
 	zSTRING ThxList[] = 
 	{
 		"Piranha Bytes",
-		"Liker (New Balance mod Team)",
-		"Haart (New Balance mod Team)",
+		"Liker (New Balance mod)",
+		"Haart (New Balance mod)",
 		"Gratt (zParserExtender)",
-		"Artists whose resources were used in this mod",
+		"Gokaq",
 		"DanilaDNL",
+		"And all artists, whose resources were used in this mod",
+		"",
 		"Icefist",
 		"ToXaL1",
 		"lorddemonik",
@@ -20,8 +22,11 @@ namespace Gothic_II_Addon
 		"Gothicmap",
 		"Dezomorphin",
 		"lev4enko",
-		"Denis Bagretsov"
+		"Denis Bagretsov",
+		"ZauronixRus"
 	};
+
+	int ConfigsExportButtonCooldown = 0;
 
 	struct ConfigPanelArgs
 	{
@@ -287,10 +292,52 @@ namespace Gothic_II_Addon
 			const ConfigPresetData* config = GetConfigPreset(presetId);
 			if (config)
 				ParseHexColor(config->TextColor.ToChar(), itm->TextColor_Default);			
-			else itm->TextColor_Default = TextColor_Regular_Default;
-			
+			else itm->TextColor_Default = TextColor_Regular_Default;			
 		}
 	}
+
+	void ConfigsWindow_OnExportConfigsButtonUpdate(BaseUiElement* button)
+	{
+		if (!button || !Instance) return;
+		MenuItem* itm = static_cast<MenuItem*>(button);
+		if (itm)
+		{
+			if (--ConfigsExportButtonCooldown < 0) ConfigsExportButtonCooldown = 0;
+			itm->IsEnabled = ConfigsExportButtonCooldown <= 0;
+		}
+	}
+	bool ConfigsWindow_OnExportConfigsButtonClick(BaseMenuElement* item, const UiMouseEventArgs& args)
+	{
+		if (!item || !Instance) return false;
+		if (args.Action != UiMouseEnum::LeftClick) return false;
+		static int exportScriptFuncIndex = parser->GetIndex("StExt_ExportCurrentConfigs_Script");
+
+		MenuItem* itm = static_cast<MenuItem*>(item);
+		if (itm && (ConfigsExportButtonCooldown <= 0))
+		{
+			parser->CallFunc(exportScriptFuncIndex);
+			ConfigsExportButtonCooldown = 120;
+		}
+		return true;
+	}
+
+	bool ConfigsWindow_OnSelectConfigsButtonClick(BaseMenuElement* item, const UiMouseEventArgs& args)
+	{
+		if (!item || !Instance) return false;
+		if (args.Action != UiMouseEnum::LeftClick) return false;
+		static int selectScriptFuncIndex = parser->GetIndex("StExt_SelectConfigs_Script");
+		static int returnStringSymIndex = parser->GetIndex("StExt_ReturnString");
+
+		MenuItem* itm = static_cast<MenuItem*>(item);
+		if (itm)
+		{
+			uint configIndex = *itm->GetData<uint>();
+			parser->GetSymbol(returnStringSymIndex)->SetValue(GameConfigsPresets[configIndex].Name, 0);
+			parser->CallFunc(selectScriptFuncIndex);
+		}
+		return true;
+	}
+
 
 	void ConfigsWindow_OnClose(MenuWindow* wnd)
 	{
@@ -634,14 +681,14 @@ namespace Gothic_II_Addon
 		return titleItem;
 	}
 
-	inline MenuItem* BuildCopyrightPanel(const zSTRING line, const float posY, const int id)
+	inline MenuItem* BuildCopyrightPanel(const zSTRING line, const float posY, const int id, const bool isHeader = false)
 	{
 		MenuItem* titleItem = new MenuItem();
-		titleItem->OnInit = [line, posY, id](BaseUiElement* item)
+		titleItem->OnInit = [line, posY, id, isHeader](BaseUiElement* item)
 		{
 			item->Name = "CopyrightPanel_" + Z(id);
 			item->SizeX = 0.98f;
-			item->SizeY = 0.03f;
+			item->SizeY = isHeader ? 0.05f : 0.03f;
 			item->PosX = 0.01f;
 			item->PosY = posY;
 			item->BgTexture = UiElement_PanelNoBorderTexture;
@@ -649,6 +696,8 @@ namespace Gothic_II_Addon
 			if (auto* itm = static_cast<MenuItem*>(item))
 			{
 				itm->Text = line;
+				if (isHeader)
+					itm->Font = MenuFont_Header;
 				itm->BehaviorFlags = UiElementBehaviorFlags::Hoverable | UiElementBehaviorFlags::Interactable;
 				itm->TextColor_Default = zCOLOR(130, 80, 250);
 				itm->HorizontalAlign = UiContentAlignEnum::Center;
@@ -710,14 +759,100 @@ namespace Gothic_II_Addon
 			}
 		};
 		ModInfoPanel->AddItem(currentItemsPresetItem);
-		yOffset += 0.125f;
 
-		// ToDo: plugins info?
+		yOffset += 0.05f;
+		ModInfoPanel->AddItem(BuildHSeparator(yOffset));
+		yOffset += 0.05f;
 
-		ModInfoPanel->AddItem(BuildCopyrightPanel(ModVersionString, yOffset, 0));
+		MenuItem* loadConfigsTitleItem = new MenuItem();
+		loadConfigsTitleItem->OnInit = [yOffset](BaseUiElement* item)
+		{
+			item->Name = "LoadConfigsTitle";
+			item->SizeX = 0.98f;
+			item->SizeY = 0.05f;
+			item->PosX = 0.01f;
+			item->PosY = yOffset;
+
+			if (auto* itm = static_cast<MenuItem*>(item))
+			{
+				itm->Text = parser->GetSymbol("StExt_Str_ModMenu_PresetsSection")->stringdata;
+				itm->HorizontalAlign = UiContentAlignEnum::Center;
+				itm->VerticalAlign = UiContentAlignEnum::Center;
+			}
+		};
+		ModInfoPanel->AddItem(loadConfigsTitleItem);
+		yOffset += 0.07f;
+
+		for (uint i = 0; i < GameConfigsPresets.GetNum(); i++)
+		{
+			MenuItem* selectConfigBtn = new MenuItem();
+			selectConfigBtn->OnInit = [yOffset, i](BaseUiElement* item)
+			{
+				item->Name = "ExportConfigsButton";
+				item->SizeX = 0.30f;
+				item->SizeY = 0.06f;
+				item->PosX = 0.35f;
+				item->PosY = yOffset;
+				item->BgTexture = UiElement_ButtonTexture;
+
+				if (auto* itm = static_cast<MenuItem*>(item))
+				{
+					itm->Text = GameConfigsPresets[i].Text;
+					ParseHexColor(GameConfigsPresets[i].TextColor.ToChar(), itm->TextColor_Default);
+					itm->BehaviorFlags = UiElementBehaviorFlags::Hoverable | UiElementBehaviorFlags::Selectable | UiElementBehaviorFlags::Interactable;
+					itm->SetOwnedData<uint>(i);
+					itm->OnMouseEvent = ConfigsWindow_OnSelectConfigsButtonClick;
+				}
+			};
+			ModInfoPanel->AddItem(selectConfigBtn);
+			yOffset += 0.07f;
+		}
 		yOffset += 0.03f;
+
+		MenuItem* exportConfigsBtn = new MenuItem();
+		exportConfigsBtn->OnInit = [yOffset](BaseUiElement* item)
+		{
+			item->Name = "ExportConfigsButton";
+			item->SizeX = 0.40f;
+			item->SizeY = 0.07f;
+			item->PosX = 0.30f;
+			item->PosY = yOffset;
+			item->BgTexture = UiElement_ButtonTexture;
+
+			if (auto* itm = static_cast<MenuItem*>(item))
+			{
+				itm->Text = parser->GetSymbol("StExt_Str_ModMenu_ExportCurrentConfigs")->stringdata;
+				itm->BehaviorFlags = UiElementBehaviorFlags::Hoverable | UiElementBehaviorFlags::Selectable | UiElementBehaviorFlags::Interactable;
+				itm->OnMouseEvent = ConfigsWindow_OnExportConfigsButtonClick;
+				itm->OnUpdate = ConfigsWindow_OnExportConfigsButtonUpdate;
+			}
+		};
+		ModInfoPanel->AddItem(exportConfigsBtn);
+		yOffset += 0.125f;
+		
+		ModInfoPanel->AddItem(BuildHSeparator(yOffset));
+		yOffset += 0.01f;
+
+		ModInfoPanel->AddItem(BuildCopyrightPanel(ModVersionString, yOffset, 0, true));
+		yOffset += 0.05f;
 		ModInfoPanel->AddItem(BuildCopyrightPanel("Created by StonedWizzard.", yOffset, 1));
-		yOffset += 0.06f;
+		yOffset += 0.035f;
+
+		if (ModPluginsInfo.GetNum() > 0)
+		{
+			yOffset += 0.0020f;
+			ModInfoPanel->AddItem(BuildCopyrightPanel("Active mod plugins:", yOffset, 2));
+			yOffset += 0.0320f;
+			for (uint i = 0; i < ModPluginsInfo.GetNum(); i++)
+			{
+				const zSTRING pluginInfo = Z(ModPluginsInfo[i].Name + " [" + ModPluginsInfo[i].Version + "] by " + ModPluginsInfo[i].Author);
+				ModInfoPanel->AddItem(BuildCopyrightPanel(pluginInfo, yOffset, 3 + i));
+				yOffset += 0.03f;
+			}
+			ModInfoPanel->AddItem(BuildCopyrightPanel("", yOffset, 999));
+			yOffset += 0.03f;
+		}
+		yOffset += 0.04f;
 
 		MenuItem* headerItem = new MenuItem();
 		headerItem->OnInit = [yOffset](BaseUiElement* item)
@@ -740,8 +875,7 @@ namespace Gothic_II_Addon
 		const uint count = sizeof(ThxList) / sizeof(ThxList[0]);
 		for (uint i = 0; i < count; ++i)
 		{
-			bool isMajor = i < 6;
-			MenuItem* itm = BuildThxPanel(ThxList[i], yOffset, i, isMajor);
+			MenuItem* itm = BuildThxPanel(ThxList[i], yOffset, i, i < 7);
 			ModInfoPanel->AddItem(itm);
 			yOffset += 0.035f;
 		}
