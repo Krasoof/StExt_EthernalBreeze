@@ -8,8 +8,13 @@ namespace Gothic_II_Addon
 	class zSTRING;
 	class oCNpc;
 
-	#define DebugEnabled true
-	#define DebugStackEnabled false
+	struct EXCEPTION_DESCR_STRUCT
+	{
+		char* Description[20];
+		int	NumDecs;
+	};
+
+	#define DebugEnabled false
 
 	#if DebugEnabled
 		#define DEBUG_MSG(message) DebugMessage(message)
@@ -17,17 +22,28 @@ namespace Gothic_II_Addon
 		#define DEBUG_MSG_DAM(funcName, message, atk, target) DebugDamageMessage(funcName, message, atk, target)
 		#define DEBUG_MSG_IF(condition, message) do { if (condition) { DebugMessage(message); } } while(0)
 		#define DEBUG_MSG_IFELSE(condition, message_true, message_false) do { if (condition) { DebugMessage(message_true); } else { DebugMessage(message_false); } } while(0) 
+		#define DEBUG_MSG_SCRIPTCALLS PrintDebugScriptCallStack()
 	#else
 		#define DEBUG_MSG(message) ((void)0)
 		#define DEBUG_MSG_FUNC(funcName, message) ((void)0)
 		#define DEBUG_MSG_DAM(funcName, message, atk, target) ((void)0)
 		#define DEBUG_MSG_IF(condition, message) ((void)0)
 		#define DEBUG_MSG_IFELSE(condition, message_true, message_false) ((void)0)
+		#define DEBUG_MSG_SCRIPTCALLS ((void)0)
 	#endif
 
+	constexpr int SCRIPT_CALL_STACK_SIZE = 256;
+	extern int ScriptCallStack[SCRIPT_CALL_STACK_SIZE];
+	extern int ScriptCallStackIndex;
+
 	void CreateDebugFile();
+	void ExceptionHandlerCallback(EXCEPTION_DESCR_STRUCT* desc);
+
 	extern void PrintDebug(zSTRING message);
 	extern void DebugMessage(zSTRING message);
 	extern void DebugFuncMessage(zSTRING funcName, zSTRING message);
 	extern void DebugDamageMessage(zSTRING funcName, zSTRING message, oCNpc* atk, oCNpc* target);
+
+	extern void PushScriptCallStackPos(const int pos);
+	extern void PrintDebugScriptCallStack();
 }

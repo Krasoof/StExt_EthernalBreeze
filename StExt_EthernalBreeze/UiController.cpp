@@ -235,13 +235,8 @@ namespace Gothic_II_Addon
 
         if (FocusNpcEx)
         {
-            failReadEs |= GetNpcExtensionVar(FocusNpcEx->m_pVARS[StExt_AiVar_Uid], StExt_AiVar_EsCur, esCur);
-            failReadEs |= GetNpcExtensionVar(FocusNpcEx->m_pVARS[StExt_AiVar_Uid], StExt_AiVar_EsMax, esMax);
-        }
-        else
-        {
-            esCur = *(int*)parser->CallFunc(NpcGetBarCurEsFunc);
-            esMax = *(int*)parser->CallFunc(NpcGetBarMaxEsFunc);
+            failReadEs |= !GetNpcExtensionVar(FocusNpcEx->m_pVARS[StExt_AiVar_Uid], StExt_AiVar_EsCur, esCur);
+            failReadEs |= !GetNpcExtensionVar(FocusNpcEx->m_pVARS[StExt_AiVar_Uid], StExt_AiVar_EsMax, esMax);
         }
 
         if (failReadEs || (esMax <= 0) || (FocusNpc && FocusNpc->IsDead()) || !ShowPcEs)

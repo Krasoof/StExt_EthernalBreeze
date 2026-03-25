@@ -394,6 +394,12 @@ namespace Gothic_II_Addon
 		int real = 0;
 		ulong damageEnum = 0;
 
+		if (!IsDamageDescriptorSane(desc))
+		{
+			DEBUG_MSG("UpdateDamageInfo - damage descriptor is corrupted!");
+			return;
+		}
+
 		for (int i = 0; i < oEDamageIndex_MAX; ++i)
 		{
 			int baseDam = static_cast<int>(desc.aryDamage[i]);
@@ -481,7 +487,7 @@ namespace Gothic_II_Addon
 	{
 		DamageMeta damageMeta = DamageMeta{};
 
-		damageMeta.Target = zDYNAMIC_CAST<oCNpc>(target);
+		damageMeta.Target = target;
 		damageMeta.Attacker = IsNpcPointerValid(desc.pNpcAttacker) ? zDYNAMIC_CAST<oCNpc>(desc.pNpcAttacker) : Null;
 		damageMeta.Weapon = desc.pItemWeapon;
 		SetScriptDamageActors(desc.pNpcAttacker, target, desc.pItemWeapon);
@@ -894,18 +900,10 @@ namespace Gothic_II_Addon
 	int oCNpc::EV_DamagePerFrame_StExt(oCMsgDamage* msg)
 	{
 		bool hasMeta = false;
-		if (msg && !msg->deleted)
+		if (msg && this && !msg->deleted)
 		{
 			oSDamageDescriptor& desc = msg->descDamage;
-			if (!IsDamageDescriptorSane(desc))
-			{
-				msg->Delete();
-				msg->Release();
-				DEBUG_MSG("EV_DamagePerFrame_StExt: BREAK: damage descriptor is corrupted!?");
-				return True;
-			}
-
-			if (IsNpcPointerValid(this))
+			if (IsDamageDescriptorSane(desc) && IsNpcPointerValid(this))
 			{
 				DamageMeta& damageMeta = PushDamageMeta(this, desc);
 				damageMeta.DamageInfo.DamageFlags |= StExt_DamageFlag_Dot;
@@ -938,6 +936,7 @@ namespace Gothic_II_Addon
 			DEBUG_MSG("OnDamage_StExt: BREAK: damage descriptor is corrupted!?");
 			return;
 		}
+		if (desc.pNpcAttacker && !IsNpcPointerValid(desc.pNpcAttacker)) desc.pNpcAttacker = Null;
 
 		DEBUG_MSG_DAM("OnDamage_StExt", "ENTER", desc.pNpcAttacker, this);
 		DEBUG_MSG_DAMDESC(desc, "OnDamage_StExt - ENTER", this);
@@ -1021,14 +1020,42 @@ namespace Gothic_II_Addon
 
 		// Original damage handler
 		DEBUG_MSG_DAM("OnDamage", "ENTER.", desc.pNpcAttacker, this);
-		THISCALL(Hook_oCNpc_OnDamage)(desc);
+		//THISCALL(Hook_oCNpc_OnDamage)(desc);
+
+		// I know, I know - not good practice just swallow exceptions...
+		// But here nothing I can do with NB code... At least for now.
+		try { THISCALL(Hook_oCNpc_OnDamage)(desc); }
+		catch (const std::exception& e)
+		{
+			DEBUG_MSG("OnDamage - EXCEPTION: " + Z(e.what()) + "!");
+			PopDamageMeta();
+			return;
+		}
+		catch (...)
+		{
+			DEBUG_MSG("OnDamage - UNKNOWN EXCEPTION!");
+			PopDamageMeta();
+			return;
+		}
+
+		const bool descStillSane = IsDamageDescriptorSane(desc);
+		DEBUG_MSG_IF(!descStillSane, "OnDamage - BEFORE EXIT. Damage descriptor is corrupted!");
+
+		if (damageMeta.Attacker && !IsNpcPointerValid(damageMeta.Attacker))
+		{
+			DEBUG_MSG("OnDamage - BEFORE EXIT. Atk is corrupted!");
+			damageMeta.Attacker = Null;
+			if (descStillSane) desc.pNpcAttacker = Null;
+		}
+		if (descStillSane && desc.pNpcAttacker && !IsNpcPointerValid(desc.pNpcAttacker)) desc.pNpcAttacker = Null;
 
 		UpdateDamageInfo(damageMeta.DamageInfo, desc);
 		SetScriptDamageActors(damageMeta.Attacker, damageMeta.Target, damageMeta.Weapon);
 		parser->SetInstance(StExt_DamageInfo_SymId, &damageMeta.DamageInfo);
 
-		DEBUG_MSG_DAM("OnDamage", "EXIT.", desc.pNpcAttacker, this);
-		DEBUG_MSG_DAMDESC(desc, "OnDamage AFTER original OnDamage", this);
+		DEBUG_MSG_DAM("OnDamage", "EXIT.", descStillSane ? desc.pNpcAttacker : Null, this);
+		if (descStillSane)
+			DEBUG_MSG_DAMDESC(desc, "OnDamage AFTER original OnDamage", this);
 		DEBUG_MSG_DAMMETA(damageMeta, "OnDamage");
 		DEBUG_MSG_DAMINFO(damageMeta.DamageInfo, "OnDamage");
 
@@ -1038,7 +1065,7 @@ namespace Gothic_II_Addon
 		
 		// prevent multi-aoe damage from spells
 		// mark spellFx as processed
-		if (desc.pFXHit && !damageMeta.SpellFxInDict)
+		if (descStillSane && desc.pFXHit && !damageMeta.SpellFxInDict)
 		{
 			PendingDamage mockDamage = PendingDamage{};
 			mockDamage.IsMock = true;
@@ -1047,8 +1074,9 @@ namespace Gothic_II_Addon
 		}
 
 		PopDamageMeta();
-		DEBUG_MSG_DAMDESC(desc, "OnDamage_StExt - EXIT", this);
-		DEBUG_MSG_DAM("OnDamage_StExt", "EXIT.", desc.pNpcAttacker, this);
+		if (descStillSane)
+			DEBUG_MSG_DAMDESC(desc, "OnDamage_StExt - EXIT", this);
+		DEBUG_MSG_DAM("OnDamage_StExt", "EXIT.", descStillSane ? desc.pNpcAttacker : Null, this);
 	}
 
 
@@ -1129,14 +1157,6 @@ namespace Gothic_II_Addon
 
 			damage = value * (-1);
 			DEBUG_MSG_FUNC("ChangeAttribute_StExt", "Apply " + Z(damage) + " damage to '" + SafeNpcName(this) + "' ...");
-			
-			/*
-			const bool isKill = ((this->attribute[0] + value) <= 0);
-			const bool isExtraDamage = HasFlag(currentDamageInfo.Flags, StExt_IncomingDamageFlag_Index_ExtraDamage);
-			const bool isExtraDamageDontKill = HasFlag(currentDamageInfo.Flags, StExt_IncomingDamageFlag_Index_DontKill);
-
-			if (isKill && isExtraDamage && isExtraDamageDontKill) value = -(this->attribute[0] - 1);
-			*/
 			THISCALL(ivk_oCNpc_ChangeAttribute)(attrIndex, value);
 
 			SetScriptDamageActors(attaker, this, weapon);

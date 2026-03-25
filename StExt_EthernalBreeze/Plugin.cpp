@@ -4,8 +4,23 @@
 
 namespace Gothic_II_Addon
 {
-    void Game_Entry() { }
-    void Game_Exit() { }
+    void Game_Entry() 
+    {
+        memset(ScriptCallStack, Invalid, sizeof(ScriptCallStack));
+        ScriptCallStackIndex = 0;
+
+#if DebugEnabled
+        using AddExcInfoCallback_t = void(__cdecl*)(void(*)(EXCEPTION_DESCR_STRUCT*));
+        auto AddCallback = (AddExcInfoCallback_t)0x004C8FB0;
+        AddCallback(&ExceptionHandlerCallback);
+#endif
+    }
+
+    void Game_Exit() 
+    {
+        DEBUG_MSG_SCRIPTCALLS;
+        DEBUG_MSG("StExt - Exit game...");
+    }
 
     // Initialize Game (mod) (kind of entry point)
     void Game_Init()

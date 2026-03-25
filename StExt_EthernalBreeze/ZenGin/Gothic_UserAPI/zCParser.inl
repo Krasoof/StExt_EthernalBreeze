@@ -3,8 +3,10 @@
 // User API for zCParser
 // Add your methods here
 
-void zCParser::CreatePCode_StExt();
+//void zCParser::CreatePCode_StExt();
 
 //void* zCParser::CallFuncStr_StExt(zSTRING const&);
 
-//void* __cdecl zCParser::CallFunc_StExt(int, ...);
+//void* __cdecl zCParser::CallFunc_StExt(int funcId, ...);
+
+void zCParser::DoStack_StExt(int);

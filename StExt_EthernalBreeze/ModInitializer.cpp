@@ -82,6 +82,8 @@ namespace Gothic_II_Addon
 	bool IsLevelChanging;
 	bool IsLoading;
 
+	int ScriptCallStack[SCRIPT_CALL_STACK_SIZE];
+	int ScriptCallStackIndex = 0;
 
 	void CreateDebugFile()
 	{
@@ -129,6 +131,144 @@ namespace Gothic_II_Addon
 		DebugFile->Write(message);
 	}
 
+	inline void PushScriptCallStackPos(const int pos)
+	{
+		const static int sizeBitOffset = (SCRIPT_CALL_STACK_SIZE - 1);
+		ScriptCallStack[ScriptCallStackIndex] = pos;
+		ScriptCallStackIndex = (ScriptCallStackIndex + 1) & sizeBitOffset;
+	}
+
+	inline zCPar_Symbol* FindSymbolByStackPos(int pos) 
+	{
+		for (int i = 0; i < parser->symtab.GetNumInList(); ++i) 
+		{
+			zCPar_Symbol* sym = parser->symtab.GetSymbol(i);
+			if (sym && (sym->type == zPAR_TYPE_FUNC) && (sym->single_intdata == pos)) return sym;
+		}
+		return Null;
+	}
+
+	inline zSTRING GetTokenName(byte op) 
+	{ 
+		switch (op) 
+		{
+			case zPAR_OP_PLUS: return "+";
+			case zPAR_OP_MINUS: return "-";
+			case zPAR_OP_MUL: return "*";
+			case zPAR_OP_DIV: return "/";
+			case zPAR_OP_EQUAL: return "==";
+			case zPAR_OP_NOTEQUAL: return "!=";
+			case zPAR_OP_LOG_AND: return "&&";
+			case zPAR_OP_LOG_OR: return "||";
+			case zPAR_OP_IS: return "=";
+			default: return "token_" + Z((int)op);
+		}
+	}
+
+	inline void ParseScriptDebugStackAdress(zSTRING& message, const int pos)
+	{
+		if (!IsIndexInBounds(pos, parser->stack.GetDynSize())) {
+			message += "Invalid Pos: " + Z(pos) + "/" + Z(parser->stack.GetDynSize()) + "\n";
+			return;
+		}
+
+		byte* bCode = parser->stack.stack;
+		byte token = bCode[pos];
+		int* dataPtr = (int*)(bCode + pos + 1);
+
+		switch (token)
+		{
+			case zPAR_TOK_CALL:
+			{
+				int stackPos = *(int*)(bCode + pos + 1);
+				zCPar_Symbol* sym = FindSymbolByStackPos(stackPos);
+				message += "call Func -> " + (sym ? sym->name : "Unknown") + "() | Adr: " + Z(stackPos);
+				break;
+			}
+			case zPAR_TOK_CALLEXTERN:
+			{
+				int symIndex = *(int*)(bCode + pos + 1);
+				zCPar_Symbol* sym = parser->GetSymbol(symIndex);
+				message += "Call External -> " + (sym ? sym->name : "Unknown") + "(); | Index: " + Z(symIndex);
+				break;
+			}
+			case zPAR_TOK_PUSHINST:
+			case zPAR_TOK_PUSHINDEX:
+			case zPAR_TOK_PUSHVAR:
+			case zPAR_TOK_ASSIGNINST:
+			{
+				int symIndex = *(int*)(bCode + pos + 1);
+				zCPar_Symbol* sym = parser->GetSymbol(symIndex);
+				message += "use Var -> " + (sym ? sym->name : "Unknown") + " | Index: " + Z(symIndex);
+				break;
+			}
+			case zPAR_TOK_PUSHSTR: 
+			{
+				zCPar_Symbol* sym = parser->GetSymbol(*dataPtr);
+				if (sym && sym->type == zPAR_TYPE_STRING) 
+				{
+					zSTRING* strVal = sym->stringdata;
+					message += "use String -> '" + (strVal ? *strVal : "<empty>") + "'";
+				}
+				message += " | Ptr: " + Z(*dataPtr);
+				break;
+			}
+			case zPAR_TOK_PUSHINT: { message += "use Int -> " + Z(*dataPtr); break; }
+			case zPAR_TOK_FLOAT: 
+			{
+				float fVal = *(float*)dataPtr;
+				message += "use Float -> " + Z fVal;
+				break;
+			}
+			case zPAR_TOK_FLAGARRAY: 
+			{
+				zCPar_Symbol* sym = parser->GetSymbol(*dataPtr);
+				byte arrayIdx = bCode[pos + 5];
+				message += "use Array -> " + (sym ? sym->name : "Unknown") + "[" + Z((int)arrayIdx) + "] | Index: " + Z(*dataPtr);
+				break;
+			}
+			default:
+				message += "Token: " + GetTokenName(token) + " (" + Z((int)token) + ")";
+				break;
+		}
+		message += Z" | Pos: " + Z(pos) + "\n";
+	}
+
+	inline void PrintDebugScriptCallStack()
+	{
+		const static int sizeBitOffset = (SCRIPT_CALL_STACK_SIZE - 1);
+		zSTRING message = "\n============================================\n[EthernalBreeze.dll] -> Scripts CallStack: \n\n";
+
+		if (!parser)
+		{
+			message += "<PARSER IS DEAD>\n============================================\n";
+			cmd << message;
+			if(DebugFile) DebugFile->Write(message);
+			return;
+		}
+		else
+		{
+			for (int i = 0; i < SCRIPT_CALL_STACK_SIZE; ++i)
+			{
+				int idx = (ScriptCallStackIndex + i) & sizeBitOffset;
+				int pos = ScriptCallStack[idx];
+				if (pos != Invalid) ParseScriptDebugStackAdress(message, pos);
+			}
+			message += Z"\n============================================\n";
+		}
+
+		cmd << message;
+		if (DebugFile)
+			DebugFile->Write(message);
+	}
+
+	void ExceptionHandlerCallback(EXCEPTION_DESCR_STRUCT* desc)
+	{
+		DEBUG_MSG_SCRIPTCALLS;
+		DEBUG_MSG("\n");
+		DEBUG_MSG("EXCEPTION!");
+	}
+
 	bool ParseTextFile(const zSTRING& path, zSTRING& buffer)
 	{
 		DEBUG_MSG("ParseTextFile: read '" + path + "' ...");
@@ -165,7 +305,7 @@ namespace Gothic_II_Addon
 		parser->CallFunc(setVerFunc);
 		zCPar_Symbol* verSym = parser->GetSymbol("StExt_CurrentModVersionString");
 
-		ModVersionString = Z("Ethernal Breeze " + Z(verSym->stringdata) + " [Build 7.0.3");
+		ModVersionString = Z("Ethernal Breeze " + Z(verSym->stringdata) + " [Build 7.0.4");
 #if DebugEnabled 
 		ModVersionString += Z(" | Debug"); 
 #endif

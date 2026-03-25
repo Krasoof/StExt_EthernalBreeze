@@ -1,4 +1,4 @@
-#include <UnionAfx.h>
+﻿#include <UnionAfx.h>
 #include <StonedExtension.h>
 
 namespace Gothic_II_Addon
@@ -1335,20 +1335,48 @@ namespace Gothic_II_Addon
             DEBUG_MSG("StExt_TeleportToNpc - one of npc is null!");
             return False;
         }
+        
+        zVEC3 wp = target->GetPositionWorld();
+        zVEC3 nwp = wp + target->GetAtVectorWorld() * 150.0f;
+        zMAT4 trafo = target->trafoObjToWorld;
+        float rot = 1.0f, sector = 0.0f;
+        int j = 19;
 
-        zVEC3 pos = target->GetPositionWorld() - (target->GetAtVectorWorld() * 50.0f);
-        atk->SetCollDet(FALSE);
-        atk->SetPositionWorld(pos);
-        if (NpcPositionIsInvalid(atk))
+        for (int i = 19; i >= 0; --i)
+        {
+            j = i;
+            zVEC3 nnwp = nwp;
+            if (atk->SearchNpcPosition(nnwp)) break;
+
+            nwp = wp + trafo.GetAtVector() * (rand() / 32767.0f * 500.0f + 100.0f);
+            trafo.SetTranslation(nwp);
+            float angle = rot * 18.0f;
+            trafo.PostRotateY(angle);
+            sector += angle;
+            if (sector >= 90.0f)
+            {
+                trafo = target->trafoObjToWorld;
+                trafo.PostRotateY(-180.0f);
+                sector = -180.0f;
+                rot = -1.0f;
+            }
+            nwp = trafo.GetTranslation();
+        }
+        if (j <= 19) { nwp = wp; atk->SearchNpcPosition(nwp); }
+
+        atk->SetCollDet(False);
+        atk->SetPositionWorld(nwp);        
+        atk->SetCollDet(True);
+        atk->Enable(atk->GetPositionWorld());
+        ogame->GetSpawnManager()->SpawnImmediately(False);
+        return True;
+
+        /*if (NpcPositionIsInvalid(atk))
         {
             DEBUG_MSG("StExt_TeleportToNpc - fix npc position...");
-            pos = FindCorrectPosition(atk);
-            atk->SetPositionWorld(pos);
-        }
-        atk->SetCollDet(TRUE);
-        atk->Enable(atk->GetPositionWorld());
-        ogame->GetSpawnManager()->SpawnImmediately(FALSE);
-        return True;
+            nwp = FindCorrectPosition(atk);
+            atk->SetPositionWorld(nwp);
+        }*/
     }
 
     int __cdecl StExt_IsNpcInProhibitedPlace()
@@ -2868,11 +2896,12 @@ namespace Gothic_II_Addon
         return THISCALL(Hook_oCSpell_Invest)();
     }
 
-    /*
-    HOOK Hook_oCVisualFX_ProcessCollision PATCH(&oCVisualFX::ProcessCollision, &oCVisualFX::StExt_ProcessCollision);
-    int oCVisualFX::StExt_ProcessCollision(zSVisualFXColl& collFX)
+#if DebugEnabled
+    HOOK Hook_zCParser_DoStack PATCH(&zCParser::DoStack, &zCParser::DoStack_StExt);
+    void zCParser::DoStack_StExt(int pos)
     {
-        if (this) DEBUG_MSG("StExt_ProcessCollision - " + this->fxName);            
-        return THISCALL(Hook_oCVisualFX_ProcessCollision)(collFX);
-    }*/
+        PushScriptCallStackPos(pos);
+        THISCALL(Hook_zCParser_DoStack)(pos);
+    }
+#endif
 }

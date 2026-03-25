@@ -406,12 +406,11 @@ namespace Gothic_II_Addon
     void oCNpc::ProcessNpc_StExt()
     {
         THISCALL(Hook_oCNpc_ProcessNpc)();
-        //if (!IsNpcPointerValid(this)) return;
-
         if (this && !this->IsDead())
         {
             parser->SetInstance(StExt_ModSelf_SymId, this);
             parser->CallFunc(StExt_OnAiStateFunc);
+            parser->SetInstance(StExt_ModSelf_SymId, Null);
         }
     }
 
