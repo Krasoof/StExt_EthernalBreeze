@@ -234,6 +234,31 @@ namespace Gothic_II_Addon
 		message += Z" | Pos: " + Z(pos) + "\n";
 	}
 
+	inline void PrintDebugScriptCallStackActors(zSTRING& message)
+	{
+		const uint ActorsListCount = 8;
+		const zSTRING ActorsList[ActorsListCount] = { "SELF", "OTHER", "VICTIM", "STEXT_SELF", "STEXT_OTHER", "STEXT_FOCUSNPC", "STEXT_ATTACKNPC", "STEXT_TARGETNPC" };
+
+		message += "\nScript actors snapshot:\n";
+		for (uint i = 0; i < ActorsListCount; i++)
+		{
+			auto sym = parser->GetSymbol(ActorsList[i]);
+			message += ActorsList[i] + ": ";
+			if (!sym) { message += "<Null> | Symbol not found!\n"; continue; }
+
+			void* instPtr = sym->GetInstanceAdr();
+			oCNpc* npc = (oCNpc*)instPtr;
+			if (!npc) { message += "<Null> | Ptr: " + Z((int)instPtr) + "\n"; continue; }
+
+			oCNpcEx* npcEx = dynamic_cast<oCNpcEx*>(npc);
+			int uid = npcEx ? npcEx->m_pVARS[StExt_AiVar_Uid] : Invalid;
+			zSTRING name = npc->IsSelfPlayer() ? "Hero" : npc->name[0];
+			zSTRING instanceName = npc->GetInstanceName();
+			int instanceId = npc->GetInstance();
+			message += "'" + name + "' | UId: " + Z(uid) + " | Instance: " + instanceName + " [" + Z(instanceId) + "] | Ptr: " + Z((int)instPtr) + "\n";
+		}
+	}
+	//inline zSTRING SafeNpcName(oCNpc* npc) { return npc ? (npc->IsSelfPlayer() ? "Hero" : npc->name[0]) : "<Null>"; }
 	inline void PrintDebugScriptCallStack()
 	{
 		const static int sizeBitOffset = (SCRIPT_CALL_STACK_SIZE - 1);
@@ -254,6 +279,11 @@ namespace Gothic_II_Addon
 				int pos = ScriptCallStack[idx];
 				if (pos != Invalid) ParseScriptDebugStackAdress(message, pos);
 			}
+
+			message += "Last script stack -> "; 
+			ParseScriptDebugStackAdress(message, *parser->stack.stacklast);
+			PrintDebugScriptCallStackActors(message);
+			
 			message += Z"\n============================================\n";
 		}
 
@@ -305,7 +335,7 @@ namespace Gothic_II_Addon
 		parser->CallFunc(setVerFunc);
 		zCPar_Symbol* verSym = parser->GetSymbol("StExt_CurrentModVersionString");
 
-		ModVersionString = Z("Ethernal Breeze " + Z(verSym->stringdata) + " [Build 7.0.4");
+		ModVersionString = Z("Ethernal Breeze " + Z(verSym->stringdata) + " [Build 7.0.5");
 #if DebugEnabled 
 		ModVersionString += Z(" | Debug"); 
 #endif

@@ -1085,7 +1085,19 @@ namespace Gothic_II_Addon
 	{
 		if ((attrIndex == NPC_ATR_HITPOINTS) && (value < 0))
 		{
-			if (!this || !IsNpcPointerValid(this)) {
+			if (!this || !IsNpcPointerValid(this)) 
+			{
+				// Try do it anyway. (fix dead npc raising)
+				if (this)
+				{
+					try 
+					{ 
+						DEBUG_MSG("ChangeAttribute_StExt: apply Hp change to corrupted npc...");
+						THISCALL(ivk_oCNpc_ChangeAttribute)(attrIndex, value); 
+					}
+					catch (const std::exception& e) { DEBUG_MSG("ChangeAttribute_StExt - EXCEPTION: " + Z(e.what()) + "!"); return; }
+					catch (...) { DEBUG_MSG("ChangeAttribute_StExt - UNKNOWN EXCEPTION!"); return; }
+				}
 				DEBUG_MSG("ChangeAttribute_StExt: EXIT. Reason: npc is corrupted!");
 				return;
 			}
