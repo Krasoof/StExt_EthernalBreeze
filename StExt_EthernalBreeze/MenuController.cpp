@@ -333,8 +333,8 @@ namespace Gothic_II_Addon
 	void CreateKeyDescriptor(const int key, UiKeyEventArgs& desc)
 	{
 		desc.KeyId = key;
-		desc.IsShiftPressed = (zKeyPressed(KEY_LSHIFT) || zKeyPressed(KEY_RSHIFT));
-		desc.IsAltPressed = (zKeyPressed(KEY_LALT) || zKeyPressed(KEY_RALT));
+		desc.IsShiftPressed = zKeyPressed(KEY_LSHIFT); // (zKeyPressed(KEY_LSHIFT) || zKeyPressed(KEY_RSHIFT));
+		desc.IsAltPressed = zKeyPressed(KEY_LALT); // (zKeyPressed(KEY_LALT) || zKeyPressed(KEY_RALT));
 
 		switch (key)
 		{
@@ -380,16 +380,16 @@ namespace Gothic_II_Addon
 			if (!isModDialog && !isHandled && CanShowModMenu)
 			{
 				if (desc.KeyId == StatsWindowKey && desc.IsShiftPressed) { isHandled = OpenMenuWindow("StatsWindow"); }
-				else if (desc.KeyId == CraftWindowKey && desc.IsAltPressed) { isHandled = OpenMenuWindow("CraftWindow"); }
+				//else if (desc.KeyId == CraftWindowKey && desc.IsAltPressed) { isHandled = OpenMenuWindow("CraftWindow"); }
 				else if (desc.KeyId == ConfigsWindowKey && desc.IsShiftPressed) { isHandled = OpenMenuWindow("ConfigsWindow"); }				
 			}
 		}
-		return isHandled;
+		return (int)isHandled;
 	}
 
 	int HandleModMouse()
 	{
-		if (!CurrentMenu || !ModMenuControllerInitialized || !ModMenuCursorControllerInitialized) return false;
+		if (!CurrentMenu || !ModMenuControllerInitialized || !ModMenuCursorControllerInitialized) return False;
 
 		bool isHandled = false;
 		UiMouseEventArgs desc = UiMouseEventArgs();
@@ -397,6 +397,43 @@ namespace Gothic_II_Addon
 		isHandled = CurrentMenu->HandleMouse(desc);
 		
 		return (int)isHandled;
+	}
+
+	inline void PlayerActionEvent_CollectPcInputData(PlayerActionEventArgs& args)
+	{
+		if (!zinput) return;
+
+		static int StExt_Config_PcMainActionKey_SymIndex = parser->GetIndex("STEXT_CONFIG_PCMAINACTIONKEY");
+		static int StExt_Config_PcSecondaryActionKey_SymIndex = parser->GetIndex("STEXT_CONFIG_PCSECONDARYACTIONKEY");
+		static int StExt_Config_PcSupportActionKey_SymIndex = parser->GetIndex("STEXT_CONFIG_PCSUPPORTACTIONKEY");
+
+		const int PcMainActionKey = parser->GetSymbol(StExt_Config_PcMainActionKey_SymIndex)->single_intdata;
+		const int PcSecondaryActionKey = parser->GetSymbol(StExt_Config_PcSecondaryActionKey_SymIndex)->single_intdata;
+		const int PcSupportActionKey = parser->GetSymbol(StExt_Config_PcSupportActionKey_SymIndex)->single_intdata;
+
+		UiMouseEventArgs desc = UiMouseEventArgs();
+		CursorController->CreateMouseDescriptor(desc);
+
+		args.MouseLButtonClicked = (desc.Action == UiMouseEnum::LeftClick);
+		args.MouseRButtonClicked = (desc.Action == UiMouseEnum::RightClick);
+		args.MouseMButtonClicked = (desc.Action == UiMouseEnum::MiddleClick);
+
+		args.ShiftKeyPressed = desc.IsShiftPressed;
+		args.AltKeyPressed = desc.IsAltPressed;
+		args.ControlKeyPressed = (zKeyPressed(KEY_LCONTROL) || zKeyPressed(KEY_RCONTROL));
+
+		args.MainActionKeyPressed = zKeyPressed(PcMainActionKey);
+		args.SecondaryActionKeyPressed = zKeyPressed(PcSecondaryActionKey);
+		args.SupportActionKeyPressed = zKeyPressed(PcSupportActionKey);
+
+		args.Flags |= StExt_PcActionFlag_HasInputData;
+	}
+
+	inline void HandlePcInput()
+	{
+		if (CurrentMenu || IsLoading || IsLevelChanging) return;
+		if (!screen || !ogame || !ogame->world || !player) return;
+		ProcessPlayerEvent(player, StExt_PcActionType_OnInput, False);
 	}
 
 	void StonedExtension_Loop_MenuController()
@@ -433,6 +470,7 @@ namespace Gothic_II_Addon
 			ModMenuWindowRequireResize = false; 
 			if (Cursor)
 				Cursor->IsHiden = true;
+			HandlePcInput();
 		}
 
 		// draw cursor
@@ -524,13 +562,13 @@ namespace Gothic_II_Addon
 	HOOK ivk_oCGame_HandleEvent PATCH(&oCGame::HandleEvent, &oCGame::HandleEvent_StExt);
 	int oCGame::HandleEvent_StExt(int key) 
 	{
-		if (IsLoading || IsLevelChanging) return true;
+		if (IsLoading || IsLevelChanging) return True;
 		bool canProcess = ogame && player && screen && !GetWorld()->csPlayer->GetPlayingGlobalCutscene();
 
 		if (canProcess)
 		{
 			int isHandled = HandleModKey(key);
-			if (isHandled) return true;
+			if (isHandled) return True;
 		}
 		return THISCALL(ivk_oCGame_HandleEvent) (key);
 	}

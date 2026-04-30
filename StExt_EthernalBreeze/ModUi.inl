@@ -15,6 +15,7 @@ inline void Gothic_II_Addon::MenuItem::SetOwnedData(Args&&... args)
     ClearData();
     Data = new T(std::forward<Args>(args)...);
     OwnsData = true;
+    DataDestructor = [](void* p) { delete static_cast<T*>(p); };
 }
 
 template<typename T>
@@ -23,6 +24,7 @@ inline void Gothic_II_Addon::MenuItem::SetPtrData(T* ptr)
     ClearData();
     Data = ptr;
     OwnsData = false;
+    DataDestructor = Null;
 }
 
 template<typename T>

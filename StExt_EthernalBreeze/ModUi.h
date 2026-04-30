@@ -14,6 +14,7 @@ namespace Gothic_II_Addon
 	{
 		int MasteryId;
 		bool IsCorruption;
+		bool IsCorruptionTouch;
 		bool IsGeneric;
 		int PerksCount;
 		zSTRING TitleSymbol;
@@ -26,6 +27,11 @@ namespace Gothic_II_Addon
 		zSTRING PerkNameSymbol;
 		zSTRING PerkDescSymbol;
 		zSTRING PerkValueSymbol;
+		int PerkLearnFuncIndex;
+		int PerkLearnCheckFuncIndex;
+		int PerkIsLearnedCheckFuncIndex;
+		bool CanResetPerks;
+		int ResetPerksFuncIndex;
 	};
 
 	struct ExtraConfigData
@@ -282,6 +288,7 @@ namespace Gothic_II_Addon
 
 		void* Data;
 		bool OwnsData;
+		std::function<void(void*)> DataDestructor;
 
 		std::function<bool(BaseMenuElement*, const UiMouseEventArgs& args)> OnMouseEvent;
 		std::function<bool(BaseMenuElement*, const UiKeyEventArgs& args)> OnKeyEvent;
@@ -337,6 +344,9 @@ namespace Gothic_II_Addon
 		bool IsApproximal;
 		bool IsSecondaryColorFormat;
 		zSTRING RangeValueSeparator;
+
+		int CurrentPrimaryValue;
+		int CurrentSecondaryValue;
 
 		zSTRING PrimaryValueName;
 		int PrimaryValueArrayIndex;
@@ -401,6 +411,7 @@ namespace Gothic_II_Addon
 
 		virtual BaseMenuElement* FindElementAt(int globalX, int globalY) override;
 		virtual BaseMenuElement* FindTopElementAt(int globalX, int globalY);
+		virtual BaseMenuElement* FindElementByName(const zSTRING& elementName);
 
 		virtual void SelectItem(BaseMenuElement* item);
 		virtual void FocusItem(BaseMenuElement* item);
@@ -727,6 +738,8 @@ namespace Gothic_II_Addon
 	void MsgTray_Clear();
 
 	extern void ParseHexColor(const zSTRING& stringColor, zCOLOR& color);
+
+	extern void PlayerActionEvent_CollectPcInputData(PlayerActionEventArgs& args);
 
 #include "ModUi.inl"
 }

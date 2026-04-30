@@ -72,11 +72,12 @@ namespace Gothic_II_Addon
 
 	inline void MenuItem::ClearData()
 	{
-		if (OwnsData && Data) {
-			delete static_cast<char*>(Data);
+		if (OwnsData && Data && DataDestructor) {
+			DataDestructor(Data);
 		}
 		Data = Null;
 		OwnsData = false;
+		DataDestructor = Null;
 	}
 
 	MenuItem::~MenuItem() { ClearData(); }

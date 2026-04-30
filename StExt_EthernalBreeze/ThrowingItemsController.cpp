@@ -24,6 +24,11 @@ namespace Gothic_II_Addon
         throwableItem->SetPhysicsEnabled(TRUE);
         throwableItem->SetTrafoObjToWorld(trafo);
         throwableItem->GetRigidBody()->gravityOn = FALSE;        
+
+        //!
+        throwableItem->GetRigidBody()->justSetSliding = FALSE;
+        throwableItem->GetRigidBody()->gravityScale = 0.1f;
+
         throwableItem->SetCollDet(TRUE);
 
         zVEC3 at = (target->GetPositionWorld()) - (throwableItem->GetPositionWorld());
@@ -66,7 +71,7 @@ namespace Gothic_II_Addon
         }
         zVEC3 vec = itemDescriptor.attacker->GetPositionWorld() + itemDescriptor.attacker->trafoObjToWorld.GetAtVector() * 50;
 
-        item->nutrition = 1; // (was 1) true mean that damage calculate from item, not stats
+        item->nutrition = True; // (was 1) true mean that damage calculate from item, not stats
         item->SetPositionWorld(vec);
         item->damageTotal = itemDescriptor.damage;
         item->damageTypes = itemDescriptor.damageType;

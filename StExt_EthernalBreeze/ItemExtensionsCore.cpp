@@ -533,7 +533,6 @@ namespace Gothic_II_Addon
             return;
         }
 
-        //zCListSort<oCItem>* it = player->inventory2.GetContents()->GetNextInList();
         zCListSort<oCItem>* it = player->inventory2.GetContents();
         while (it)
         {
@@ -732,25 +731,20 @@ namespace Gothic_II_Addon
         }
     }
 
+    inline bool IsItemPriceValid(const int price) { return (price >= 0) && (price <= ItemExtension_MaxPrice); }
+
     HOOK Hook_oCItem_GetValue PATCH(&oCItem::GetValue, &oCItem::GetValue_StExt);
     int oCItem::GetValue_StExt()
     {
         int result = THISCALL(Hook_oCItem_GetValue)();
-        if (result <= 0)
-        {
-            if (this->value > 0) result = this->value;
-            else
-            {
-                const ItemExtension* extension = GetItemExtension(this);
-                if (extension) 
-                    result = this->value = extension->Cost;
-                else result = this->value = 1;
-            }
-        }
 
-        //DEBUG_MSG_IF(result <= 0, "oCItem::GetValue_StExt: cost is less than zero! Cost: " + Z(result) + " | Item: " + this->GetInstanceName());
-        //DEBUG_MSG_IF(result >= 65535, "oCItem::GetValue_StExt: cost is more than short! Cost: " + Z(result) + " | Item: " + this->GetInstanceName());
-        return ValidateValue(result, 1, ItemExtension_MaxPrice);
+        const ItemExtension* extension = GetItemExtension(this);
+        if (extension) 
+            result = IsItemPriceValid(extension->Cost) ? extension->Cost : IsItemPriceValid(this->value) ? this->value : 10;
+        else if (!IsItemPriceValid(result))
+            result = IsItemPriceValid(this->value) ? this->value : 10;
+        
+        return ValidateValue(result, 10, ItemExtension_MaxPrice);
     }
 
     HOOK Hook_oCNpc_AddItemEffects PATCH(&oCNpc::AddItemEffects, &oCNpc::AddItemEffects_StExt);

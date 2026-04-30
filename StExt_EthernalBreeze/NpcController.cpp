@@ -2,6 +2,7 @@
 
 namespace Gothic_II_Addon
 {
+    PlayerActionEventArgs PlayerActionEventData;
     Map<int, NpcExtension*> NpcExtensionData;
     uint NpcExtensionCount;
     int LastNpcUid;
@@ -422,4 +423,192 @@ namespace Gothic_II_Addon
         }
         THISCALL(Hook_oCNpc_OpenInventory)(mode);
     }
+    
+    HOOK Hook_oCNpc_OnMessage PATCH(&oCNpc::OnMessage, &oCNpc::OnMessage_StExt);
+    void oCNpc::OnMessage_StExt(zCEventMessage* msg, zCVob* vob)
+    {
+        try { THISCALL(Hook_oCNpc_OnMessage)(msg, vob); }
+        catch (const std::exception& e) { DEBUG_MSG("OnMessage_StExt - EXCEPTION: " + Z(e.what()) + "!"); }
+        catch (...) { DEBUG_MSG("OnMessage_StExt - UNKNOWN EXCEPTION!"); }
+    }
+
+    // Player actions events system
+
+    inline void ProcessPlayerEvent(oCNpc* npc, const int eventType, const int eventResult)
+    {
+        static int OnPlayerEventFuncIndex = parser->GetIndex("STEXT_ONPLAYERACTION");
+        static int OnPlayerEventArgsIndex = parser->GetIndex("STEXT_ONPLAYERACTION_EVENTARGS");
+        static int EventArgsTargetIndex = parser->GetIndex("STEXT_EVENTARGS_TARGET");
+
+        if (!npc || npc != player || !npc->IsSelfPlayer()) return;
+        memset(&PlayerActionEventData, 0, sizeof(PlayerActionEventData));
+
+        PlayerActionEventData.Type = eventType;
+        PlayerActionEventData.Flags = StExt_PcActionFlag_None;
+        PlayerActionEventData.Result = eventResult;
+        PlayerActionEventData.IsHandled = False;
+
+        PlayerActionEventData.WeaponMode = npc->GetWeaponMode();
+        PlayerActionEventData.BodyState = npc->GetBodyState();
+        PlayerActionEventData.CanDoAni = True;
+        PlayerActionEvent_CollectPcInputData(PlayerActionEventData);
+
+        if ((eventType == StExt_PcActionType_OnInput) && 
+            !PlayerActionEventData.MouseLButtonClicked && !PlayerActionEventData.MouseRButtonClicked) return;
+
+        parser->SetInstance(EventArgsTargetIndex, npc->GetFocusNpc());
+        parser->SetInstance(OnPlayerEventArgsIndex, &PlayerActionEventData);
+        parser->CallFunc(OnPlayerEventFuncIndex);
+        parser->SetInstance(OnPlayerEventArgsIndex, Null);
+        parser->SetInstance(EventArgsTargetIndex, Null);
+    }
+
+
+    HOOK Hook_oCNpc_EV_AttackForward PATCH(&oCNpc::EV_AttackForward, &oCNpc::EV_AttackForward_StExt);
+    int oCNpc::EV_AttackForward_StExt(oCMsgAttack* msg)
+    {
+        if (!this) return True;
+
+        const int result = THISCALL(Hook_oCNpc_EV_AttackForward)(msg);
+        if (this->IsSelfPlayer() && result) {
+            ProcessPlayerEvent(this, StExt_PcActionType_OnAttackForward, result);
+        }
+        return result;
+    }
+
+    HOOK Hook_oCNpc_EV_AttackLeft PATCH(&oCNpc::EV_AttackLeft, &oCNpc::EV_AttackLeft_StExt);
+    int oCNpc::EV_AttackLeft_StExt(oCMsgAttack* msg)
+    {
+        if (!this) return True;
+
+        const int result = THISCALL(Hook_oCNpc_EV_AttackLeft)(msg);
+        if (this->IsSelfPlayer() && result) {
+            ProcessPlayerEvent(this, StExt_PcActionType_OnAttackLeft, result);
+        }
+        return result;
+    }
+
+    HOOK Hook_oCNpc_EV_AttackRight PATCH(&oCNpc::EV_AttackRight, &oCNpc::EV_AttackRight_StExt);
+    int oCNpc::EV_AttackRight_StExt(oCMsgAttack* msg)
+    {
+        if (!this) return True;
+
+        const int result = THISCALL(Hook_oCNpc_EV_AttackRight)(msg);
+        if (this->IsSelfPlayer() && result) {
+            ProcessPlayerEvent(this, StExt_PcActionType_OnAttackRight, result);
+        }
+        return result;
+    }
+
+    HOOK Hook_oCNpc_EV_AttackRun PATCH(&oCNpc::EV_AttackRun, &oCNpc::EV_AttackRun_StExt);
+    int oCNpc::EV_AttackRun_StExt(oCMsgAttack* msg)
+    {
+        if (!this) return True;
+
+        const int result = THISCALL(Hook_oCNpc_EV_AttackRun)(msg);
+        if (this->IsSelfPlayer() && result) {
+            ProcessPlayerEvent(this, StExt_PcActionType_OnAttackRun, result);
+        }
+        return result;
+    }
+
+    HOOK Hook_oCNpc_EV_AttackFinish PATCH(&oCNpc::EV_AttackFinish, &oCNpc::EV_AttackFinish_StExt);
+    int oCNpc::EV_AttackFinish_StExt(oCMsgAttack* msg)
+    {
+        if (!this) return True;
+
+        const int result = THISCALL(Hook_oCNpc_EV_AttackFinish)(msg);
+        if (this->IsSelfPlayer() && result) {
+            ProcessPlayerEvent(this, StExt_PcActionType_OnAttackFinish, result);
+        }
+        return result;
+    }
+
+    HOOK Hook_oCNpc_EV_Parade PATCH(&oCNpc::EV_Parade, &oCNpc::EV_Parade_StExt);
+    int oCNpc::EV_Parade_StExt(oCMsgAttack* msg)
+    {
+        if (!this) return True;
+
+        const int result = THISCALL(Hook_oCNpc_EV_Parade)(msg);
+        if (this->IsSelfPlayer() && result) {
+            ProcessPlayerEvent(this, StExt_PcActionType_OnParade, result);
+        }
+        return result;
+    }
+
+    HOOK Hook_oCNpc_EV_ShootAt PATCH(&oCNpc::EV_ShootAt, &oCNpc::EV_ShootAt_StExt);
+    int oCNpc::EV_ShootAt_StExt(oCMsgAttack* msg)
+    {
+        if (!this) return True;
+
+        const int result = THISCALL(Hook_oCNpc_EV_ShootAt)(msg);
+        if (this->IsSelfPlayer() && result) {
+            ProcessPlayerEvent(this, StExt_PcActionType_OnShootAt, result);
+        }
+        return result;
+    }
+
+    HOOK Hook_oCNpc_EV_Defend PATCH(&oCNpc::EV_Defend, &oCNpc::EV_Defend_StExt);
+    int oCNpc::EV_Defend_StExt(oCMsgAttack* msg)
+    {
+        if (!this) return True;
+
+        const int result = THISCALL(Hook_oCNpc_EV_Defend)(msg);
+        if (this->IsSelfPlayer() && result) {
+            ProcessPlayerEvent(this, StExt_PcActionType_OnDefend, result);
+        }
+        return result;
+    }
+/*
+
+// WEAPON MODE
+#define	zWEAPON_NONE				0
+#define	zWEAPON_FIST				1
+#define	zWEAPON_KNIFE				2
+#define	zWEAPON_1H					3
+#define	zWEAPON_2H					4
+#define	zWEAPON_BOW					5
+#define	zWEAPON_CROSSBOW			6
+#define	zWEAPON_MAGIC				7
+
+//WEAPON TYPE
+#define zWEAPON_TYPE_FIST			1
+#define zWEAPON_TYPE_NF				2
+#define zWEAPON_TYPE_FF				4
+#define zWEAPON_TYPE_MAGIC			8
+
+// BodyStates
+#define zBS_STAND					0
+#define zBS_WALK					1
+#define zBS_SNEAK					2
+#define zBS_RUN						3
+#define zBS_SPRINT					4
+#define zBS_SWIM					5
+#define zBS_CRAWL					6
+#define zBS_DIVE					7
+#define zBS_JUMP					8
+#define zBS_CLIMB					9
+#define zBS_FALL					10
+#define zBS_SIT						11
+#define zBS_LIE						12
+#define zBS_INVENTORY				13
+#define zBS_ITEMINTERACT			14
+#define zBS_MOBINTERACT				15
+#define zBS_MOBINTERACT_INTERRUPT	16
+#define zBS_TAKEITEM				17
+#define zBS_DROPITEM				18
+#define zBS_THROWITEM				19
+#define zBS_PICKPOCKET				20
+#define zBS_STUMBLE					21
+#define zBS_UNCONSCIOUS				22
+#define zBS_DEAD					23
+#define zBS_AIMNEAR					24
+#define zBS_AIMFAR					25
+#define zBS_HIT						26
+#define zBS_PARADE					27
+#define zBS_CASTING					28
+#define zBS_PETRIFIED				29
+#define zBS_CONTROLLING				30
+#define zBS_MAX						31
+*/
 }

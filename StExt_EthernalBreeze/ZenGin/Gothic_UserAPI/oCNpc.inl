@@ -55,3 +55,18 @@ int oCNpc::EV_PlaySound_StExt(oCMsgConversation*);
 int oCNpc::EV_OutputSVM_StExt(oCMsgConversation*);
 
 void oCNpc::OpenInventory_StExt(int mode);
+
+void oCNpc::OnMessage_StExt(zCEventMessage* msg, zCVob* vob);
+
+void DoDie_StExt(oCNpc* atk);
+
+int oCNpc::EV_AttackForward_StExt(oCMsgAttack* msg);
+int oCNpc::EV_AttackLeft_StExt(oCMsgAttack* msg);
+int oCNpc::EV_AttackRight_StExt(oCMsgAttack* msg);
+int oCNpc::EV_AttackRun_StExt(oCMsgAttack* msg);
+int oCNpc::EV_AttackFinish_StExt(oCMsgAttack* msg);
+int oCNpc::EV_Parade_StExt(oCMsgAttack* msg);
+
+int oCNpc::EV_ShootAt_StExt(oCMsgAttack* msg);
+int oCNpc::EV_Defend_StExt(oCMsgAttack* msg);
+

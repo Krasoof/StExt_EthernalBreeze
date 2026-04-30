@@ -105,7 +105,7 @@ namespace Gothic_II_Addon
 		const bool isHit = (args.X > GlobalRectLeft && args.X < GlobalRectRight) && (args.Y > GlobalRectTop && args.Y < GlobalRectBottom);
 		if (isHit && args.Action == UiMouseEnum::Scroll) {
 			int scrollDelta = static_cast<int>((args.ScrollDelta * ModMenuWindow_ScrollShiftMult) * ModMenuWindow_ScrollMult);
-			DEBUG_MSG("StExt - mod Ui: scrollDelta - " + Z(scrollDelta));
+			//DEBUG_MSG("StExt - mod Ui: scrollDelta - " + Z(scrollDelta));
 			Scroll(scrollDelta);
 		}
 		return BaseMenuPanel::HandleMouse(args);

@@ -170,7 +170,7 @@ namespace Gothic_II_Addon
 		}
 
 		statsCost = ValidateValue(static_cast<int>(statsCost * ItemsGeneratorConfigs.ItemStatPriceMult), 1, 25000);
-		abilitiesCost = ValidateValue(static_cast<int>(statsCost * ItemsGeneratorConfigs.ItemStatPriceMult), 1, 50000); // TODO - Fix it later
+		abilitiesCost = ValidateValue(static_cast<int>(statsCost * ItemsGeneratorConfigs.ItemStatPriceMult), 1, 50000);
 
 		totalCost = static_cast<int>((statsCost + abilitiesCost) * ItemClassData->PriceMult);
 		totalCost += static_cast<int>((Properties[(int)ItemProperty::InitialCost] + itemExtraCost) * priceMult);

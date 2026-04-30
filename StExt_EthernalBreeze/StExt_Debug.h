@@ -15,21 +15,22 @@ namespace Gothic_II_Addon
 	};
 
 	#define DebugEnabled false
+	#define DebugItemInstanceNameEnabled false
 
 	#if DebugEnabled
-		#define DEBUG_MSG(message) DebugMessage(message)
-		#define DEBUG_MSG_FUNC(funcName, message) DebugFuncMessage(funcName, message)
-		#define DEBUG_MSG_DAM(funcName, message, atk, target) DebugDamageMessage(funcName, message, atk, target)
+		#define DEBUG_MSG(message) do { DebugMessage(message); } while(0)
+		#define DEBUG_MSG_FUNC(funcName, message) do { DebugFuncMessage(funcName, message); } while(0)
+		#define DEBUG_MSG_DAM(funcName, message, atk, target) do { DebugDamageMessage(funcName, message, atk, target); } while(0)
 		#define DEBUG_MSG_IF(condition, message) do { if (condition) { DebugMessage(message); } } while(0)
-		#define DEBUG_MSG_IFELSE(condition, message_true, message_false) do { if (condition) { DebugMessage(message_true); } else { DebugMessage(message_false); } } while(0) 
-		#define DEBUG_MSG_SCRIPTCALLS PrintDebugScriptCallStack()
+		#define DEBUG_MSG_IFELSE(condition, message_true, message_false) do { if (condition) { DebugMessage(message_true); } else { DebugMessage(message_false); } } while(0)
+		#define DEBUG_MSG_SCRIPTCALLS do { PrintDebugScriptCallStack(); } while(0)
 	#else
-		#define DEBUG_MSG(message) ((void)0)
-		#define DEBUG_MSG_FUNC(funcName, message) ((void)0)
-		#define DEBUG_MSG_DAM(funcName, message, atk, target) ((void)0)
-		#define DEBUG_MSG_IF(condition, message) ((void)0)
-		#define DEBUG_MSG_IFELSE(condition, message_true, message_false) ((void)0)
-		#define DEBUG_MSG_SCRIPTCALLS ((void)0)
+		#define DEBUG_MSG(message) do { (void)sizeof(message); } while(0)
+		#define DEBUG_MSG_FUNC(funcName, message) do { (void)sizeof(funcName); (void)sizeof(message); } while(0)
+		#define DEBUG_MSG_DAM(funcName, message, atk, target) do { (void)sizeof(funcName); (void)sizeof(message); (void)sizeof(atk); (void)sizeof(target); } while(0)
+		#define DEBUG_MSG_IF(condition, message) do { (void)(condition); } while(0)
+		#define DEBUG_MSG_IFELSE(condition, message_true, message_false) do { (void)(condition); } while(0)
+		#define DEBUG_MSG_SCRIPTCALLS do { } while(0)
 	#endif
 
 	constexpr int SCRIPT_CALL_STACK_SIZE = 256;

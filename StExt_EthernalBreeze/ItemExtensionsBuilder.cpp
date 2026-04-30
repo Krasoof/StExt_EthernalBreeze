@@ -733,7 +733,7 @@ namespace Gothic_II_Addon
 
         itemExtension->Properties[(int)ItemProperty::InitialSpell] = item->spell;
         itemExtension->Range = itemExtension->Properties[(int)ItemProperty::InitialRange] = item->range;
-        itemExtension->Cost = itemExtension->Properties[(int)ItemProperty::InitialCost] = item->value;
+        itemExtension->Cost = itemExtension->Properties[(int)ItemProperty::InitialCost] = ValidateValue(item->value, 1, 5000);
         itemExtension->Weight = itemExtension->Properties[(int)ItemProperty::InitialWeight] = item->weight;
         
         for (int i = 0; i < ItemExtension_Conditions_Max; ++i)

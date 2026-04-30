@@ -72,6 +72,7 @@ namespace Gothic_II_Addon
 	int StExt_AiVar_Uid;
 	int StExt_AiVar_EsCur;
 	int StExt_AiVar_EsMax;
+	int StExt_AiVar_LastAtkPtr;
 
 	zSTRING SecondsSuffixString;
 	zSTRING StExt_EsText;
@@ -266,7 +267,7 @@ namespace Gothic_II_Addon
 
 		if (!parser)
 		{
-			message += "<PARSER IS DEAD>\n============================================\n";
+			message += "<PARSER IS DEAD...>\n============================================\n";
 			cmd << message;
 			if(DebugFile) DebugFile->Write(message);
 			return;
@@ -335,7 +336,7 @@ namespace Gothic_II_Addon
 		parser->CallFunc(setVerFunc);
 		zCPar_Symbol* verSym = parser->GetSymbol("StExt_CurrentModVersionString");
 
-		ModVersionString = Z("Ethernal Breeze " + Z(verSym->stringdata) + " [Build 7.0.5");
+		ModVersionString = Z("Ethernal Breeze " + Z(verSym->stringdata) + " [Build 7.0.6");
 #if DebugEnabled 
 		ModVersionString += Z(" | Debug"); 
 #endif
@@ -441,16 +442,19 @@ namespace Gothic_II_Addon
 
 		const int corruptionMaxIndex = parser->GetSymbol("StExt_Corruption_Max")->single_intdata;
 		const int corruptionPerksMax = parser->GetSymbol("StExt_CorruptionPerk_Max")->single_intdata;
+		const int masteriesMaxIndex = parser->GetSymbol("StExt_MasteryIndex_Max")->single_intdata;
+		const int masteriesPerksMax = parser->GetSymbol("StExt_MasteryPerk_Max")->single_intdata;
+		const int generalPerksMax = parser->GetSymbol("StExt_Perk_Max")->single_intdata;
 		const zSTRING corruptionsSuffix[] = { zSTRING(""), zSTRING("Mage"), zSTRING("Warrior"), zSTRING("Ranger") };
+
 		for (int i = 1; i < corruptionMaxIndex; ++i)
 		{
 			ExtraMasteryData data = ExtraMasteryData();
-
 			data.MasteryId = i;
 			data.IsCorruption = true;
 			data.IsGeneric = false;
+			data.IsCorruptionTouch = false;
 			data.PerksCount = corruptionPerksMax;
-
 			data.TitleSymbol = "StExt_Str_CorruptionName";
 			data.DescSymbol = "StExt_Str_CorruptionDesc";
 			data.RankSymbol = zSTRING();
@@ -458,25 +462,25 @@ namespace Gothic_II_Addon
 			data.ExpSymbol = "StExt_CorruptionPath_ExpNow";
 			data.NextExpSymbol = "StExt_CorruptionPath_ExpNext";
 			data.LpSymbol = "StExt_CorruptionPath_SkillPoints";
-
 			data.PerkNameSymbol = "StExt_Corruption_Perk_Name_" + corruptionsSuffix[i];
 			data.PerkDescSymbol = "StExt_Corruption_Perk_Desc_" + corruptionsSuffix[i];
 			data.PerkValueSymbol = "StExt_Corruption_Perk_" + corruptionsSuffix[i];
-
+			data.PerkLearnCheckFuncIndex = parser->GetIndex("STEXT_CANLEARNCORRUPTIONPERK");
+			data.PerkLearnFuncIndex = parser->GetIndex("STEXT_LEARNCORRUPTIONPERK");
+			data.PerkIsLearnedCheckFuncIndex = parser->GetIndex("STEXT_ISCORRUPTIONPERKLEARNED");
+			data.CanResetPerks = true;
+			data.ResetPerksFuncIndex = parser->GetIndex("STEXT_RESETCORRUPTIONPERKS");
 			ExtraMasteriesData.Insert(data);
 		}
 
-		const int masteriesMaxIndex = parser->GetSymbol("StExt_MasteryIndex_Max")->single_intdata;
-		const int masteriesPerksMax = parser->GetSymbol("StExt_MasteryPerk_Max")->single_intdata;
 		for (int i = 0; i < masteriesMaxIndex; ++i)
 		{
 			ExtraMasteryData data = ExtraMasteryData();
-
 			data.MasteryId = i;
 			data.IsCorruption = false;
 			data.IsGeneric = false;
+			data.IsCorruptionTouch = false;
 			data.PerksCount = masteriesPerksMax;
-
 			data.TitleSymbol = "StExt_Str_MasteryNames";
 			data.DescSymbol = "StExt_Str_MasteryDescription";
 			data.RankSymbol = "StExt_Talent_Level";
@@ -484,22 +488,23 @@ namespace Gothic_II_Addon
 			data.ExpSymbol = "StExt_Talent_ExpNow";
 			data.NextExpSymbol = "StExt_Talent_ExpNext";
 			data.LpSymbol = "StExt_Talent_PerkPoints";
-
 			data.PerkNameSymbol = "StExt_Str_MasteryPerk_Name_" + Z(i);
 			data.PerkDescSymbol = "StExt_Str_MasteryPerk_Desc_" + Z(i);
 			data.PerkValueSymbol = "StExt_Perk_" + Z(i);
-
+			data.PerkLearnCheckFuncIndex = parser->GetIndex("STEXT_CANLEARNMASTERYPERK");
+			data.PerkLearnFuncIndex = parser->GetIndex("STEXT_LEARNMASTERYPERK");
+			data.PerkIsLearnedCheckFuncIndex = parser->GetIndex("STEXT_ISMASTERYPERKLEARNED");
+			data.CanResetPerks = true;
+			data.ResetPerksFuncIndex = parser->GetIndex("STEXT_RESETMASTERYPERKS");
 			ExtraMasteriesData.Insert(data);
 		}
 
-		const int generalPerksMax = parser->GetSymbol("StExt_Perk_Max")->single_intdata;
 		ExtraMasteryData genericData = ExtraMasteryData();
-
 		genericData.MasteryId = 0;
 		genericData.IsCorruption = false;
 		genericData.IsGeneric = true;
+		genericData.IsCorruptionTouch = false;
 		genericData.PerksCount = generalPerksMax;
-
 		genericData.TitleSymbol = "StExt_Str_GeneralPerks_Header";
 		genericData.DescSymbol = zSTRING();
 		genericData.RankSymbol = zSTRING();
@@ -507,12 +512,39 @@ namespace Gothic_II_Addon
 		genericData.ExpSymbol = zSTRING();
 		genericData.NextExpSymbol = zSTRING();
 		genericData.LpSymbol = zSTRING();
-
 		genericData.PerkNameSymbol = "StExt_Str_Perk_Name";
 		genericData.PerkDescSymbol = "StExt_Str_Perk_Desc";
 		genericData.PerkValueSymbol = "StExt_Perk";
-
+		genericData.PerkLearnCheckFuncIndex = parser->GetIndex("STEXT_CANLEARNGENERICPERK");
+		genericData.PerkLearnFuncIndex = parser->GetIndex("STEXT_LEARNGENERICPERK");
+		genericData.PerkIsLearnedCheckFuncIndex = parser->GetIndex("STEXT_ISGENERICPERKLEARNED");
+		genericData.CanResetPerks = true;
+		genericData.ResetPerksFuncIndex = parser->GetIndex("STEXT_RESETGENERICPERKS");
 		ExtraMasteriesData.Insert(genericData);
+
+		ExtraMasteryData corruptionTouchData = ExtraMasteryData();
+		corruptionTouchData.MasteryId = parser->GetSymbol("StExt_PerkIndex_CorruptTouch")->single_intdata;
+		corruptionTouchData.IsCorruption = false;
+		corruptionTouchData.IsGeneric = false;
+		corruptionTouchData.IsCorruptionTouch = true;
+		corruptionTouchData.PerksCount = 0;
+		corruptionTouchData.TitleSymbol = "StExt_Str_Perk_Name";
+		corruptionTouchData.DescSymbol = "StExt_Str_Perk_Desc";
+		corruptionTouchData.RankSymbol = zSTRING();
+		corruptionTouchData.LevelSymbol = "StExt_CorruptedPerk_DamageLevel";
+		corruptionTouchData.ExpSymbol = "StExt_CorruptedPerk_DamageNow";
+		corruptionTouchData.NextExpSymbol = "StExt_CorruptedPerk_DamageNext";
+		corruptionTouchData.LpSymbol = "StExt_CorruptedPerk_DamagePoints";
+		corruptionTouchData.PerkNameSymbol = zSTRING();
+		corruptionTouchData.PerkDescSymbol = zSTRING();
+		corruptionTouchData.PerkValueSymbol = zSTRING();
+		corruptionTouchData.PerkLearnCheckFuncIndex = Invalid;
+		corruptionTouchData.PerkLearnFuncIndex = Invalid;
+		corruptionTouchData.PerkIsLearnedCheckFuncIndex = Invalid;
+		corruptionTouchData.CanResetPerks = false;
+		corruptionTouchData.ResetPerksFuncIndex = Invalid;
+		ExtraMasteriesData.Insert(corruptionTouchData);
+
 		DEBUG_MSG("Masteries data was initialized!");
 	}
 
@@ -751,6 +783,7 @@ namespace Gothic_II_Addon
 		StExt_Config_NpcStats_TopOffset = parser->GetSymbol("StExt_Config_NpcStatsUi_TopOffset")->single_intdata;
 		StExt_Config_NpcStats_HideTags = parser->GetSymbol("StExt_Config_NpcStatsUi_HideTags")->single_intdata;
 
+		StExt_AiVar_LastAtkPtr = parser->GetSymbol("StExt_AiVar_LastAtkPtr")->single_intdata;
 		StExt_AiVar_IsRandomized = parser->GetSymbol("StExt_AiVar_IsRandomized")->single_intdata;
 		StExt_AiVar_Uid = parser->GetSymbol("StExt_AiVar_Uid")->single_intdata;
 		StExt_AiVar_EsCur = parser->GetSymbol("StExt_AiVar_EsCur")->single_intdata;
@@ -775,6 +808,7 @@ namespace Gothic_II_Addon
 		InitItemAbilitiesData();
 
 		ProhibitedWaypoints = Array<WaypointData>();
+		CorruptionTouchStatsData = Map<int, CorruptionTouchStatData>();
 		parser->CallFunc(parser->GetIndex("StExt_OnModLoaded"));
 	}
 

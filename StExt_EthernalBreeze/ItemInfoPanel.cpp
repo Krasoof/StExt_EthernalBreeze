@@ -188,7 +188,7 @@ namespace Gothic_II_Addon
 	{
 		if (!DisplayItem) return;
 
-#if DebugEnabled
+#if DebugEnabled && DebugItemInstanceNameEnabled
 		if (itemExtension && parser->GetSymbol("StExt_Config_DebugEnabled")->single_intdata)
 			CreateContentLine("[" + itemExtension->InstanceName + "]");
 #endif

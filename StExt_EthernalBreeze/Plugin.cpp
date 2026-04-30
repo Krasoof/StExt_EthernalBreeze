@@ -70,6 +70,12 @@ namespace Gothic_II_Addon
         DEBUG_MSG("");
         DEBUG_MSG("-------> START SAVE GAME");
         DEBUG_MSG("");
+
+        static const int onSaveStartEventSymIndex = parser->GetIndex("StExt_OnSaveGame");
+
+        int slotID = SaveLoadGameInfo.slotID;
+        if (slotID > 0)
+            parser->CallFunc(onSaveStartEventSymIndex, slotID);
     }
     void Game_SaveEnd()
     {
@@ -108,9 +114,11 @@ namespace Gothic_II_Addon
     {
         IsLoading = false;
         IsLevelChanging = false;
+        int slotID = SaveLoadGameInfo.slotID;
+
         parser->GetSymbol("StExt_IsLevelChanging")->SetValue(IsLevelChanging, 0);
         parser->GetSymbol("StExt_IsLoading")->SetValue(IsLoading, 0);
-        parser->CallFunc(OnLoadEndFunc);
+        parser->CallFunc(OnLoadEndFunc, slotID);
         DrawModInfo();
         DEBUG_MSG("");
         DEBUG_MSG("-------> LoadEnd: NEW GAME");
@@ -143,9 +151,11 @@ namespace Gothic_II_Addon
 
         IsLoading = false;
         IsLevelChanging = false;
+        int slotID = SaveLoadGameInfo.slotID;
+
         parser->GetSymbol("StExt_IsLoading")->SetValue(IsLoading, 0);
         parser->GetSymbol("StExt_IsLevelChanging")->SetValue(IsLevelChanging, 0);
-        parser->CallFunc(OnLoadEndFunc);
+        parser->CallFunc(OnLoadEndFunc, slotID);
         DrawModInfo();
         DEBUG_MSG("");
         DEBUG_MSG("-------> LoadEnd: SAVE GAME");
@@ -177,11 +187,14 @@ namespace Gothic_II_Addon
     void Game_LoadEnd_ChangeLevel()
     {
         RegisterWorldNpcs();
+
         IsLevelChanging = false;
         IsLoading = false;
+        int slotID = SaveLoadGameInfo.slotID;
+
         parser->GetSymbol("StExt_IsLoading")->SetValue(IsLoading, 0);
         parser->GetSymbol("StExt_IsLevelChanging")->SetValue(IsLevelChanging, 0);
-        parser->CallFunc(OnLoadEndFunc);
+        parser->CallFunc(OnLoadEndFunc, slotID);
         DEBUG_MSG("");
         DEBUG_MSG("-------> LoadEnd: CHANGE LEVEL");
         DEBUG_MSG("");

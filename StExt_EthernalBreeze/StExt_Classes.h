@@ -157,6 +157,13 @@ namespace Gothic_II_Addon
 		float CostPerStat;
 	};
 
+	struct CorruptionTouchStatData
+	{
+		int StatId;
+		int StatMax;
+		int StatsPerPoint;
+	};
+
 	struct UncapedStatData
 	{
 		int Id;
@@ -263,6 +270,37 @@ namespace Gothic_II_Addon
 			float FloatParam[8];
 			zSTRING StringParam[8];
 		} ScriptCallbackParams;
+	};
+
+	struct PlayerActionEventArgs
+	{
+		int Type;
+		int Flags;
+		int Result;	
+		int IsHandled;
+
+		int MouseLButtonClicked;
+		int MouseRButtonClicked;
+		int MouseMButtonClicked;
+
+		int ControlKeyPressed;
+		int ShiftKeyPressed;
+		int AltKeyPressed;
+
+		int MainActionKeyPressed;
+		int SecondaryActionKeyPressed;
+		int SupportActionKeyPressed;
+
+		int WeaponMode;
+		int BodyState;
+		int CanDoAni;
+	};
+
+	struct RandomNpcRecord
+	{
+		int Power;
+		int Count;
+		zSTRING InstanceName;
 	};
 
 	// **************************************************************

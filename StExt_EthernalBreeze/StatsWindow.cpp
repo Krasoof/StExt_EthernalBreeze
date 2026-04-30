@@ -20,6 +20,7 @@ namespace Gothic_II_Addon
 	{
 		int SkillId;
 		int MasteryId;
+		int MasteryTreeIndex;
 		float PosY;
 		bool IsCorruptionMastery;
 		bool IsGenericMastery;
@@ -29,11 +30,18 @@ namespace Gothic_II_Addon
 		zSTRING ValueSymbol;
 	};
 
+	struct SkillLearnArgs
+	{
+		int SkillId;
+		int MasteryTreeIndex;
+	};
+
 	struct SkillHeaderPanelArgs
 	{
 		int MasteryId;
 		float PosY;
 		bool IsCorruptionMastery;
+		bool IsCorruptionTouchMastery;
 		zSTRING NamePostfix;
 		zSTRING TitleSymbol;
 		zSTRING DescSymbol;
@@ -301,6 +309,147 @@ namespace Gothic_II_Addon
 		container->SetScrollOffset(scrollOffset, Invalid);
 	}
 
+
+	inline bool OnLearnSkillButton_CanLearnPerk(const SkillLearnArgs& learnArgs, const ExtraMasteryData& masteryData)
+	{
+		if (masteryData.IsCorruption) return *(int*)parser->CallFunc(masteryData.PerkLearnCheckFuncIndex, masteryData.MasteryId, learnArgs.SkillId, True);
+		else if (masteryData.IsGeneric) return *(int*)parser->CallFunc(masteryData.PerkLearnCheckFuncIndex, learnArgs.SkillId, True);
+		else return *(int*)parser->CallFunc(masteryData.PerkLearnCheckFuncIndex, masteryData.MasteryId, learnArgs.SkillId);
+	}
+
+	inline bool OnLearnSkillButton_IsPerkLearned(const SkillLearnArgs& learnArgs, const ExtraMasteryData& masteryData)
+	{
+		if (masteryData.IsGeneric) return *(int*)parser->CallFunc(masteryData.PerkIsLearnedCheckFuncIndex, learnArgs.SkillId);
+		else return *(int*)parser->CallFunc(masteryData.PerkIsLearnedCheckFuncIndex, masteryData.MasteryId, learnArgs.SkillId);
+	}
+
+	bool StatsWindow_OnLearnSkillButtonClick(BaseMenuElement* item, const UiMouseEventArgs& args)
+	{
+		if (!item || !Instance) return false;
+		if (args.Action != UiMouseEnum::LeftClick) return false;
+
+		MenuItem* itm = static_cast<MenuItem*>(item);
+		if (itm && itm->Data)
+		{
+			const SkillLearnArgs& learnArgs = *(itm->GetData<SkillLearnArgs>());
+			const ExtraMasteryData& masteryData = ExtraMasteriesData[learnArgs.MasteryTreeIndex];
+			if (OnLearnSkillButton_CanLearnPerk(learnArgs, masteryData))
+			{
+				if (masteryData.IsCorruption) parser->CallFunc(masteryData.PerkLearnFuncIndex, masteryData.MasteryId, learnArgs.SkillId);
+				else if (masteryData.IsGeneric) parser->CallFunc(masteryData.PerkLearnFuncIndex, learnArgs.SkillId);
+				else parser->CallFunc(masteryData.PerkLearnFuncIndex, masteryData.MasteryId, learnArgs.SkillId);
+			}
+		}
+		return true;
+	}
+
+	void StatsWindow_OnLearnSkillButtonUpdate(BaseUiElement* button)
+	{
+		if (!button || !Instance) return;
+
+		static const zSTRING learnStr = parser->GetSymbol("StExt_Str_DoSkillLearn")->stringdata;
+		static const zSTRING learnLpStr = parser->GetSymbol("StExt_Str_Required_Lp")->stringdata;
+		static const zSTRING learnGoldStr = parser->GetSymbol("StExt_Str_Required_Gold")->stringdata;
+		static const int getCorruptionPerkCostFuncIndex = parser->GetIndex("STEXT_GETCORRUPTIONPERKCOST");
+		static const int getGenericPerkCostFuncIndex = parser->GetIndex("STEXT_GETGENERICPERKLPCOST");
+		static const int getGenericPerkGoldCostFuncIndex = parser->GetIndex("STEXT_GETGENERICPERKCOST");
+
+		MenuItem* itm = static_cast<MenuItem*>(button);
+		if (itm && itm->Data)
+		{
+			const SkillLearnArgs& learnArgs = *(itm->GetData<SkillLearnArgs>());
+			const ExtraMasteryData& masteryData = ExtraMasteriesData[learnArgs.MasteryTreeIndex];
+
+			if ((masteryData.IsGeneric || masteryData.IsCorruption) && !itm->IsHiden)
+			{
+				const int requiredLp = masteryData.IsGeneric ?
+					*(int*)parser->CallFunc(getGenericPerkCostFuncIndex, learnArgs.SkillId) :
+					*(int*)parser->CallFunc(getCorruptionPerkCostFuncIndex, masteryData.MasteryId, learnArgs.SkillId);
+
+				itm->Text = learnStr + " (" + Z(requiredLp) + learnLpStr;
+				if (masteryData.IsGeneric)
+				{
+					const int requiredGold = *(int*)parser->CallFunc(getGenericPerkGoldCostFuncIndex, learnArgs.SkillId);
+					itm->Text += ", " + Z(requiredGold) + " " + learnGoldStr;
+				}
+				itm->Text += ")";
+			}
+
+			itm->IsHiden = OnLearnSkillButton_IsPerkLearned(learnArgs, masteryData);
+			itm->IsEnabled = OnLearnSkillButton_CanLearnPerk(learnArgs, masteryData);
+		}
+	}
+
+	inline bool OnLearnCorruptionTouchStatButton_CanLearnStat(const int statId)
+	{
+		static const int statArrayIndex = parser->GetIndex("STEXT_PCSTATS_OTHER");
+		static const int lpSymIndex = parser->GetIndex("STEXT_CORRUPTEDPERK_DAMAGEPOINTS");
+
+		const int statMax = CorruptionTouchStatsData[statId].GetValue().StatMax;
+		const int statNow = parser->GetSymbol(statArrayIndex)->intdata[statId];
+		const int lpNow = parser->GetSymbol(lpSymIndex)->single_intdata;
+		return (statNow < statMax) && (lpNow > 0);
+	}
+
+	inline bool OnLearnCorruptionTouchStatButton_IsStatLearned(const int statId)
+	{
+		static const int statArrayIndex = parser->GetIndex("STEXT_PCSTATS_OTHER");
+		const int statMax = CorruptionTouchStatsData[statId].GetValue().StatMax;
+		const int statNow = parser->GetSymbol(statArrayIndex)->intdata[statId];
+		return statNow >= statMax;
+	}
+
+	bool CorruptionTouch_OnLearnStatButtonClick(BaseMenuElement* item, const UiMouseEventArgs& args)
+	{
+		static const int addFucnIndex = parser->GetIndex("STEXT_ADDCORRUPTTOUCHSTATENGINE");
+
+		if (!item || !Instance) return false;
+		if (args.Action != UiMouseEnum::LeftClick) return false;
+
+		MenuItem* itm = static_cast<MenuItem*>(item);
+		if (itm && itm->Data)
+		{
+			const int statId = *(itm->GetData<int>());
+			if (OnLearnCorruptionTouchStatButton_CanLearnStat(statId))
+			{
+				const int statValue = CorruptionTouchStatsData[statId].GetValue().StatsPerPoint;
+				parser->CallFunc(addFucnIndex, statId, statValue);
+			}
+		}
+		return true;
+	}
+
+	void CorruptionTouch_OnLearnStatButtonUpdate(BaseUiElement* button)
+	{
+		if (!button || !Instance) return;
+
+		MenuItem* itm = static_cast<MenuItem*>(button);
+		if (itm && itm->Data)
+		{
+			const int statId = *(itm->GetData<int>());
+			itm->IsHiden = OnLearnCorruptionTouchStatButton_IsStatLearned(statId);
+			itm->IsEnabled = OnLearnCorruptionTouchStatButton_CanLearnStat(statId);
+		}
+	}
+
+	bool StatsWindow_OnLearnSkillForgetButtonClick(BaseMenuElement* item, const UiMouseEventArgs& args)
+	{
+		if (!item || !Instance) return false;
+		if (args.Action != UiMouseEnum::LeftClick) return false;
+
+		MenuItem* itm = static_cast<MenuItem*>(item);
+		if (itm && itm->Data)
+		{
+			const int treeIndex = *(itm->GetData<int>());
+			const ExtraMasteryData& masteryData = ExtraMasteriesData[treeIndex];
+			if (!masteryData.CanResetPerks) return true;
+
+			if (masteryData.IsGeneric || masteryData.IsCorruption) parser->CallFunc(masteryData.ResetPerksFuncIndex);
+			else parser->CallFunc(masteryData.ResetPerksFuncIndex, masteryData.MasteryId);
+		}
+		return true;
+	}
+	
 	//----------------------------------------------------------------------
 	//								TABS PANEL
 	//----------------------------------------------------------------------
@@ -345,7 +494,7 @@ namespace Gothic_II_Addon
 				if (auto* itm = static_cast<MenuItem*>(item))
 				{
 					itm->IsSelected = i == 0;
-					itm->IsEnabled = true; //i <= 2; // ToDo: Temp silution. Remove later on prod
+					itm->IsEnabled = true;
 					itm->Text = parser->GetSymbol("StExt_StatsMenu_TabName")->stringdata[i];
 					itm->Font = MenuFont_Header;
 					itm->TextColor_Default = TextColor_HeaderTab_Default;
@@ -369,7 +518,7 @@ namespace Gothic_II_Addon
 		tabPanelSeparator->Init();
 	}
 
-	inline void BuildSkillPostfixName(zSTRING& postfix, const int masteryId, const int skillId, const bool isCorruption, const bool isGeneric) { postfix = Z((int)isCorruption) + Z((int)isGeneric) + "_" + Z(masteryId) + "_" + Z(skillId); }
+	inline void BuildSkillPostfixName(zSTRING& postfix, const int masteryId, const int skillId, const bool isCorruption, const bool isGeneric, const int masteryIndex = 0) { postfix = Z((int)isCorruption) + Z((int)isGeneric) + Z(masteryIndex) + "_" + Z(masteryId) + "_" + Z(skillId); }
 
 
 	//----------------------------------------------------------------------
@@ -767,7 +916,7 @@ namespace Gothic_II_Addon
 		{
 			item->Name = "GenericCorruptionPanel";
 			item->SizeX = 0.98f;
-			item->SizeY = 0.40f * ModMenuItem_EmdedPanelsScaleMult;
+			item->SizeY = 0.45f * ModMenuItem_EmdedPanelsScaleMult;
 			item->PosX = 0.01f;
 			item->PosY = posY;
 			item->OnUpdate = StatsWindow_OnCorruptionPanelUpdate;
@@ -1125,7 +1274,6 @@ namespace Gothic_II_Addon
 	}
 
 
-
 #define STEXT_GENERALTABPANEL_ADDITEM(itm, offset)  GeneralTabPanel->AddItem(itm); yOffset += offset;
 	void StatsWindow::InitGeneralTab()
 	{
@@ -1148,13 +1296,13 @@ namespace Gothic_II_Addon
 		float yOffset = yOffsetBig;
 
 		STEXT_GENERALTABPANEL_ADDITEM(BuildGenericCorruptionPanel(yOffset), statPanelSizeY);
-		yOffset += 0.40f + yOffsetBig;
+		yOffset += (0.45f * ModMenuItem_EmdedPanelsScaleMult) + yOffsetBig;
 
 		// masteries
 		zSTRING namePostfix = "";
-		for (auto masteryData : ExtraMasteriesData)
+		for (auto& masteryData : ExtraMasteriesData)
 		{
-			if (masteryData.IsGeneric || masteryData.IsCorruption) continue;
+			if (masteryData.IsGeneric || masteryData.IsCorruption || masteryData.IsCorruptionTouch) continue;
 
 			SkillHeaderPanelArgs skillsHeaderPanelArgs = SkillHeaderPanelArgs();
 			BuildSkillPostfixName(namePostfix, masteryData.MasteryId, 0, masteryData.IsCorruption, masteryData.IsGeneric);
@@ -1474,23 +1622,23 @@ namespace Gothic_II_Addon
 		{
 			item->Name = "SkillPanel_" + args.NamePostfix;
 			item->SizeX = 0.98f;
-			item->SizeY = 0.10f * ModMenuItem_EmdedPanelsScaleMult;
+			item->SizeY = 0.125f * ModMenuItem_EmdedPanelsScaleMult;
 			item->PosX = 0.01f;
 			item->PosY = args.PosY;
 			if (auto* itm = static_cast<BaseMenuPanel*>(item)) {
 				itm->BehaviorFlags = UiElementBehaviorFlags::Hoverable | UiElementBehaviorFlags::Interactable;
 			}
 		};
-		panel->SizeY = 0.10f;
+		panel->SizeY = 0.125f * ModMenuItem_EmdedPanelsScaleMult;
 
 		MenuItem* titleItem = new MenuItem();
 		titleItem->OnInit = [args](BaseUiElement* item)
 		{
 			item->Name = "SkillPanel_Title_" + args.NamePostfix;
 			item->SizeX = 0.98f;
-			item->SizeY = 0.15f;
+			item->SizeY = 0.175f;
 			item->PosX = 0.01f;
-			item->PosY = 0.05f;
+			item->PosY = 0.025f;
 
 			if (auto* itm = static_cast<MenuItem*>(item))
 			{
@@ -1541,6 +1689,36 @@ namespace Gothic_II_Addon
 			}
 		};
 
+		MenuItem* learnButton = new MenuItem();
+		learnButton->OnInit = [args](BaseUiElement* item)
+		{
+			item->Name = "SkillPanel_LearnButton_" + args.NamePostfix;
+			item->SizeX = 0.17f;
+			item->SizeY = 0.23f;
+			item->PosX = 0.82f;
+			item->PosY = 0.01f;
+			item->BgTexture = UiElement_ButtonTexture;
+
+			if (auto* itm = static_cast<MenuItem*>(item))
+			{
+				itm->Text = parser->GetSymbol("StExt_Str_DoSkillLearn")->stringdata;
+				itm->Font = MenuFont_Sys_Default;
+				itm->TextColor_Default = TextColor_HeaderTab_Default;
+				itm->TextColor_Hovered = TextColor_Yes;
+				itm->TextColor_Selected = TextColor_Yes;
+				itm->TextColor_Disabled = TextColor_HeaderTab_Disabled;
+				itm->BehaviorFlags = UiElementBehaviorFlags::Hoverable | UiElementBehaviorFlags::Selectable | UiElementBehaviorFlags::Interactable;
+
+				SkillLearnArgs learnArgs = SkillLearnArgs{};
+				learnArgs.SkillId = args.SkillId;
+				learnArgs.MasteryTreeIndex = args.MasteryTreeIndex;
+				itm->SetOwnedData<SkillLearnArgs>(learnArgs);
+				itm->OnMouseEvent = StatsWindow_OnLearnSkillButtonClick;
+				itm->OnUpdate = StatsWindow_OnLearnSkillButtonUpdate;
+			}
+		};
+
+		panel->AddItem(learnButton);
 		panel->AddItem(titleItem);
 		panel->AddItem(descriptionItem);
 		panel->AddItem(valueItem);
@@ -1559,7 +1737,7 @@ namespace Gothic_II_Addon
 			item->PosY = args.PosY;
 			item->BgTexture = UiElement_ButtonTexture;
 		};
-		panel->SizeY = 0.25f;
+		panel->SizeY = 0.25f * ModMenuItem_EmdedPanelsScaleMult;
 
 		MenuItem* titleItem = new MenuItem();
 		titleItem->OnInit = [args](BaseUiElement* item)
@@ -1605,7 +1783,7 @@ namespace Gothic_II_Addon
 			item->PosY = 0.32f;
 
 			if (auto* itm = static_cast<MenuItem*>(item)) {
-				itm->Text = parser->GetSymbol("StExt_Str_Talents_Exp")->stringdata;
+				itm->Text = args.IsCorruptionTouchMastery ? parser->GetSymbol("StExt_Str_CorruptedPerk_DamageExp")->stringdata : parser->GetSymbol("StExt_Str_Talents_Exp")->stringdata;
 				itm->HorizontalAlign = UiContentAlignEnum::End;
 			}
 		};
@@ -1618,7 +1796,7 @@ namespace Gothic_II_Addon
 			item->PosY = 0.43f;
 
 			if (auto* itm = static_cast<MenuItem*>(item)) {
-				itm->Text = parser->GetSymbol("StExt_Str_Talents_Lp")->stringdata;
+				itm->Text = args.IsCorruptionTouchMastery ? parser->GetSymbol("StExt_Str_CorruptedPerk_DamagePoints")->stringdata : parser->GetSymbol("StExt_Str_Talents_Lp")->stringdata;
 				itm->HorizontalAlign = UiContentAlignEnum::End;
 			}
 		};
@@ -1637,14 +1815,14 @@ namespace Gothic_II_Addon
 
 			if (auto* itm = static_cast<MenuValueItem*>(item))
 			{
-				itm->IsArray = !args.IsCorruptionMastery;
+				itm->IsArray = !args.IsCorruptionMastery && !args.IsCorruptionTouchMastery;
 				itm->HorizontalAlign = UiContentAlignEnum::Begin;				
 
 				itm->PrimaryValueName = args.LevelSymbol;
 				itm->PrimaryValueArrayIndex = args.MasteryId;
 				itm->PrimaryValueDisplayType = UiValueDisplayType::Default;
 
-				if (!args.IsCorruptionMastery)
+				if (!args.IsCorruptionMastery && !args.IsCorruptionTouchMastery)
 				{
 					itm->IsRanged = true;
 					itm->RangeValueSeparator = " | ";
@@ -1666,7 +1844,7 @@ namespace Gothic_II_Addon
 
 			if (auto* itm = static_cast<MenuValueItem*>(item))
 			{
-				itm->IsArray = !args.IsCorruptionMastery;
+				itm->IsArray = !args.IsCorruptionMastery && !args.IsCorruptionTouchMastery;
 				itm->IsRanged = true;
 				itm->HorizontalAlign = UiContentAlignEnum::Begin;
 
@@ -1690,7 +1868,7 @@ namespace Gothic_II_Addon
 
 			if (auto* itm = static_cast<MenuValueItem*>(item))
 			{
-				itm->IsArray = !args.IsCorruptionMastery;
+				itm->IsArray = !args.IsCorruptionMastery && !args.IsCorruptionTouchMastery;
 				itm->HorizontalAlign = UiContentAlignEnum::Begin;
 
 				itm->PrimaryValueName = args.LpSymbol;
@@ -1725,6 +1903,128 @@ namespace Gothic_II_Addon
 		return panel;
 	}
 
+	inline BaseMenuPanel* BuildCorruptionTouchStatPanel(const int statId, const float posY, const float sizeY)
+	{
+		const ExtraStatData* statData = GetExtraStatDataById(statId);
+		if (!statData)
+		{
+			DEBUG_MSG("StExt Mod Ui - Fail to build stats panel (CorruptionTouch). StatId = " + Z(statId));
+			return Null;
+		}
+
+		BaseMenuPanel* panel = new BaseMenuPanel();
+		panel->OnInit = [statId, posY, sizeY](BaseUiElement* item)
+		{
+			item->Name = "CorruptionTouch_StatPanel_" + Z(statId);
+			item->SizeX = 0.98f;
+			item->SizeY = sizeY;
+			item->PosX = 0.01f;
+			item->PosY = posY;
+			if (auto* itm = static_cast<BaseMenuPanel*>(item)) {
+				itm->BehaviorFlags = UiElementBehaviorFlags::Hoverable | UiElementBehaviorFlags::Interactable;
+			}
+		};
+
+		MenuItem* titleItem = new MenuItem();
+		titleItem->OnInit = [statId](BaseUiElement* item)
+		{
+			item->Name = "CorruptionTouch_StatPanel_Title_" + Z(statId);
+			item->SizeX = 0.75f;
+			item->SizeY = 0.95f;
+			item->PosX = 0.025f;
+			item->PosY = 0.025f;
+
+			if (auto* itm = static_cast<MenuItem*>(item))
+			{
+				itm->Text = GetExtraStatNameById(statId);
+				itm->BehaviorFlags = UiElementBehaviorFlags::Hoverable | UiElementBehaviorFlags::Interactable;
+				itm->HorizontalAlign = UiContentAlignEnum::Begin;
+				itm->SetOwnedData<int>(statId);
+			}
+		};
+
+		MenuValueItem* valueItem = new MenuValueItem();
+		UiValueDisplayType displayType = (UiValueDisplayType)statData->ValueType;
+		valueItem->OnInit = [statId, displayType](BaseUiElement* item)
+		{
+			item->Name = "CorruptionTouch_StatPanel_Value_" + Z(statId);
+			item->SizeX = 0.115f;
+			item->SizeY = 0.95f;
+			item->PosX = 0.785f;
+			item->PosY = 0.025f;
+
+			if (auto* itm = static_cast<MenuValueItem*>(item))
+			{
+				itm->IsArray = true;
+				itm->PrimaryValueArrayIndex = statId;
+				itm->PrimaryValueName = "StExt_PcStats_Other";
+				itm->PrimaryValueDisplayType = displayType;
+				itm->BehaviorFlags = UiElementBehaviorFlags::Hoverable | UiElementBehaviorFlags::Interactable;
+				itm->SetOwnedData<int>(statId);
+			}
+		};
+
+		MenuItem* learnButton = new MenuItem();
+		learnButton->OnInit = [statId](BaseUiElement* item)
+		{
+			item->Name = "CorruptionTouch_StatPanel_LearnButton_" + Z(statId);
+			item->SizeX = 0.065f;
+			item->SizeY = 0.95f;
+			item->PosX = 0.91f;
+			item->PosY = 0.025f;
+			item->BgTexture = UiElement_ButtonTexture;
+
+			if (auto* itm = static_cast<MenuItem*>(item))
+			{
+				itm->Text = "+";
+				itm->Font = MenuFont_Sys_Default;
+				itm->TextColor_Default = TextColor_HeaderTab_Default;
+				itm->TextColor_Hovered = TextColor_Yes;
+				itm->TextColor_Selected = TextColor_Yes;
+				itm->TextColor_Disabled = TextColor_HeaderTab_Disabled;
+				itm->BehaviorFlags = UiElementBehaviorFlags::Hoverable | UiElementBehaviorFlags::Selectable | UiElementBehaviorFlags::Interactable;
+
+				itm->SetOwnedData<int>(statId);
+				itm->OnMouseEvent = CorruptionTouch_OnLearnStatButtonClick;
+				itm->OnUpdate = CorruptionTouch_OnLearnStatButtonUpdate;
+			}
+		};
+
+		panel->AddItem(titleItem);
+		panel->AddItem(valueItem);
+		panel->AddItem(learnButton);
+		return panel;
+	}
+
+	inline MenuItem* BuildSkillsForgetButtom(const int index, const float posY)
+	{
+		MenuItem* button = new MenuItem();
+		button->OnInit = [index, posY](BaseUiElement* item)
+		{
+			item->Name = "SkillPanel_ForgetButtom_" + Z(index);
+			item->SizeX = 0.70f;
+			item->SizeY = 0.10f;
+			item->PosX = 0.15f;
+			item->PosY = posY;
+			item->BgTexture = UiElement_ButtonTexture;
+
+			if (auto* itm = static_cast<MenuItem*>(item))
+			{
+				itm->Text = parser->GetSymbol("StExt_Str_ForgetPerks")->stringdata;
+				itm->Font = MenuFont_Header;
+				itm->TextColor_Default = TextColor_No;
+				itm->TextColor_Hovered = TextColor_HeaderTab_Hovered;
+				itm->TextColor_Selected = TextColor_HeaderTab_Selected;
+				itm->TextColor_Disabled = TextColor_HeaderTab_Disabled;
+				itm->BehaviorFlags = UiElementBehaviorFlags::Hoverable | UiElementBehaviorFlags::Selectable | UiElementBehaviorFlags::Interactable;
+
+				itm->SetOwnedData<int>(index);
+				itm->OnMouseEvent = StatsWindow_OnLearnSkillForgetButtonClick;
+			}
+		};
+		return button;
+	}
+
 	void StatsWindow::InitSkillsTab()
 	{
 		SkillsTabPanel = new BaseMenuPanel();
@@ -1756,10 +2056,10 @@ namespace Gothic_II_Addon
 		};
 		SkillsTabPanel->AddItem(masteriesListView);
 
-		int index = 0;
 		MasteryIndexMax = ExtraMasteriesData.GetNum();
-		for (auto masteryData : ExtraMasteriesData)
+		for (int index = 0; index < MasteryIndexMax; ++index)
 		{
+			auto& masteryData = ExtraMasteriesData[index];
 			MenuItem* masteriesListItem = new MenuItem();
 			masteriesListItem->OnInit = [index, masteryData](BaseUiElement* item)
 			{
@@ -1795,15 +2095,15 @@ namespace Gothic_II_Addon
 
 			float yOffset = 0.01f;
 			zSTRING namePostfix = "";
-
 			if (!masteryData.IsGeneric)
 			{
 				SkillHeaderPanelArgs skillsHeaderPanelArgs = SkillHeaderPanelArgs();
-				BuildSkillPostfixName(namePostfix, masteryData.MasteryId, 0, masteryData.IsCorruption, masteryData.IsGeneric);
+				BuildSkillPostfixName(namePostfix, masteryData.MasteryId, 0, masteryData.IsCorruption, masteryData.IsGeneric, index);
 				
 				skillsHeaderPanelArgs.MasteryId = masteryData.MasteryId;
 				skillsHeaderPanelArgs.PosY = yOffset;
 				skillsHeaderPanelArgs.IsCorruptionMastery = masteryData.IsCorruption;
+				skillsHeaderPanelArgs.IsCorruptionTouchMastery = masteryData.IsCorruptionTouch;
 				skillsHeaderPanelArgs.NamePostfix = namePostfix;
 
 				skillsHeaderPanelArgs.TitleSymbol = masteryData.TitleSymbol;
@@ -1819,31 +2119,50 @@ namespace Gothic_II_Addon
 				yOffset += skillsHeaderPanel->SizeY + 0.05f;
 			}
 
-			for (int perkId = 0; perkId < masteryData.PerksCount; ++perkId)
+			if (!masteryData.IsCorruptionTouch)
 			{
-				SkillPanelArgs skillPanelArgs = SkillPanelArgs();
-				BuildSkillPostfixName(namePostfix, masteryData.MasteryId, perkId, masteryData.IsCorruption, masteryData.IsGeneric);
+				for (int perkId = 0; perkId < masteryData.PerksCount; ++perkId)
+				{
+					SkillPanelArgs skillPanelArgs = SkillPanelArgs();
+					BuildSkillPostfixName(namePostfix, masteryData.MasteryId, perkId, masteryData.IsCorruption, masteryData.IsGeneric, index);
 
-				skillPanelArgs.SkillId = perkId;
-				skillPanelArgs.MasteryId = masteryData.MasteryId;
-				skillPanelArgs.PosY = yOffset;
-				skillPanelArgs.IsCorruptionMastery = masteryData.IsCorruption;
-				skillPanelArgs.IsGenericMastery = masteryData.IsGeneric;
-				skillPanelArgs.NamePostfix = namePostfix;
-				skillPanelArgs.TitleSymbol = masteryData.PerkNameSymbol;
-				skillPanelArgs.DescSymbol = masteryData.PerkDescSymbol;
-				skillPanelArgs.ValueSymbol = masteryData.PerkValueSymbol;
+					skillPanelArgs.SkillId = perkId;
+					skillPanelArgs.MasteryId = masteryData.MasteryId;
+					skillPanelArgs.MasteryTreeIndex = index;
+					skillPanelArgs.PosY = yOffset;
+					skillPanelArgs.IsCorruptionMastery = masteryData.IsCorruption;
+					skillPanelArgs.IsGenericMastery = masteryData.IsGeneric;
+					skillPanelArgs.NamePostfix = namePostfix;
+					skillPanelArgs.TitleSymbol = masteryData.PerkNameSymbol;
+					skillPanelArgs.DescSymbol = masteryData.PerkDescSymbol;
+					skillPanelArgs.ValueSymbol = masteryData.PerkValueSymbol;
 
-				BaseMenuPanel* skillPanel = BuildSkillPanel(skillPanelArgs);
-				yOffset += skillPanel->SizeY + 0.01f;
-				MenuItem* skillSeparator = BuildHSeparator(yOffset);
-				yOffset += skillSeparator->SizeY + 0.03f;
-				
-				masteriesPanel->AddItem(skillPanel);
-				masteriesPanel->AddItem(skillSeparator);
+					BaseMenuPanel* skillPanel = BuildSkillPanel(skillPanelArgs);
+					yOffset += skillPanel->SizeY + 0.01f;
+					MenuItem* skillSeparator = BuildHSeparator(yOffset);
+					yOffset += skillSeparator->SizeY + 0.03f;
+
+					masteriesPanel->AddItem(skillPanel);
+					masteriesPanel->AddItem(skillSeparator);
+				}
+			}
+			else
+			{
+				for (auto& pair : CorruptionTouchStatsData)
+				{
+					CorruptionTouchStatData& statData = pair.GetValue();
+					BaseMenuPanel* statPanel = BuildCorruptionTouchStatPanel(statData.StatId, yOffset, 0.035f);
+					yOffset += 0.045f;
+					masteriesPanel->AddItem(statPanel);
+				}
 			}
 
-			++index;
+			if (masteryData.CanResetPerks)
+			{
+				yOffset += 0.1f;
+				masteriesPanel->AddItem(BuildSkillsForgetButtom(index, yOffset));
+				yOffset += 0.15f;
+			}
 		}
 
 		SkillsTabPanel->Init();

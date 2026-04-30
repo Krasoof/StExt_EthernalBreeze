@@ -186,7 +186,7 @@ namespace Gothic_II_Addon
 	inline bool IsDamageDescriptorSane(oCNpc::oSDamageDescriptor& desc)
 	{
 		const int MAX_REASONABLE_DAMAGE = 100000;
-		const int MAX_REASONABLE_TOTAL = 300000;
+		const int MAX_REASONABLE_TOTAL = 500000;
 
 		if (desc.fDamageTotal < 0 || desc.fDamageTotal > MAX_REASONABLE_TOTAL) return false;
 		if (desc.fDamageReal < 0 || desc.fDamageReal > MAX_REASONABLE_TOTAL) return false;
@@ -278,6 +278,12 @@ namespace Gothic_II_Addon
 		parser->SetInstance(StExt_TargetNpc_SymId, target);
 		parser->SetInstance(StExt_AttackNpc_SymId, atk);
 		parser->SetInstance(StExt_AttackWeapon_SymId, weap);
+	}
+
+	inline void SetScriptActors(oCNpc* atk, oCNpc* target)
+	{
+		parser->SetInstance(StExt_Self_SymId, target);
+		parser->SetInstance(StExt_Other_SymId, atk);
 	}
 
 	inline void BuildDescriptor(oCNpc::oSDamageDescriptor& desc)
@@ -606,6 +612,9 @@ namespace Gothic_II_Addon
 
 		zCVob* pVob = Null;
 		oCNpc* npc = Null;
+		void* oldOther = parser->GetSymbol(StExt_ModOther_SymId)->GetInstanceAdr();
+		void* oldSelf = parser->GetSymbol(StExt_ModSelf_SymId)->GetInstanceAdr();
+
 		for (int i = 0; i < center->vobList.GetNum(); ++i)
 		{
 			if (i > 8192 || foundNpcs > damageStruct.MaxTargets) break;
@@ -628,17 +637,20 @@ namespace Gothic_II_Addon
 		if (center && player && (center != player))
 		{
 			float dist = center->GetDistanceToVob(*player);
-			if (dist > radius) return foundNpcs;
-			if (targetsList.HasEqual(player)) return foundNpcs;
-
-			parser->SetInstance(StExt_ModSelf_SymId, atk);
-			parser->SetInstance(StExt_ModOther_SymId, player);
-			bool isEnemy = *(int*)parser->CallFunc(damageSelectorFunc);
-			if (isEnemy) {
-				targetsList.Insert(player);
-				++foundNpcs;
+			if ((dist <= radius) && !targetsList.HasEqual(player))
+			{
+				parser->SetInstance(StExt_ModSelf_SymId, atk);
+				parser->SetInstance(StExt_ModOther_SymId, player);
+				bool isEnemy = *(int*)parser->CallFunc(damageSelectorFunc);
+				if (isEnemy) {
+					targetsList.InsertFront(player);
+					++foundNpcs;
+				}
 			}
 		}
+
+		parser->SetInstance(StExt_ModSelf_SymId, oldSelf);
+		parser->SetInstance(StExt_ModOther_SymId, oldOther);
 		return foundNpcs;
 	}
 
@@ -669,7 +681,7 @@ namespace Gothic_II_Addon
 			DEBUG_MSG("AddDotDamage: target npc is null! Skipped!");
 			return;
 		}
-		if (target->IsDead() || target->IsUnconscious()) return;
+		if (target->IsDead()) return;
 
 		parser->SetInstance(StExt_ModSelf_SymId, target);
 		parser->SetInstance(StExt_ModOther_SymId, atk);
@@ -712,7 +724,7 @@ namespace Gothic_II_Addon
 			DEBUG_MSG("DoExtraDamage: target npc is null or corrupted! Skipped!");
 			return;
 		}
-		if (target->IsDead() || target->IsUnconscious()) return;
+		if (target->IsDead()) return;
 
 		if (!IsNpcPointerValid(atk)) atk = Null;
 		if (hasDotDamage)
@@ -851,10 +863,7 @@ namespace Gothic_II_Addon
 			desc.aryDamageEffective[i] = static_cast<ulong>(dam);
 		}
 
-		if (damageReal <= 0) {
-			DEBUG_MSG_FUNC("ProcessExtraDamage", "EXIT. RealDamage: " + Z(damageReal) + "!");
-			return;
-		}
+		if (damageReal <= 0) damageReal = 1;
 		desc.fDamageTotal = static_cast<float>(damageTotal);
 		desc.fDamageEffective = desc.fDamageReal = static_cast<float>(damageReal);
 
@@ -862,30 +871,18 @@ namespace Gothic_II_Addon
 		if(currentDamageMeta)
 			UpdateDamageInfo(currentDamageMeta->DamageInfo, desc);
 
-		bool humanHitCondition = false;
-		if (target->IsHuman() && (damageReal >= totalHp))
-		{
-			int canKill = *(int*)parser->CallFunc(dontKillcheckFuncIndex);
-			if (!canKill)
-			{
-				damageReal = (totalHp - 1);
-				humanHitCondition = true;
-			}
-		}
-
 		target->ChangeAttribute(NPC_ATR_HITPOINTS, -damageReal);
 		damageReal = totalHp - (target->attribute[0] + GetCurNpcEs(target));
 
-		target->OnDamage_Condition(desc);
-		if (humanHitCondition)
+		target->OnDamage_Condition(desc);		
+		if ((target->attribute[0] <= 1) && target->IsHuman())
 		{
-			desc.bIsDead = False;
-			if (target->attribute[0] <= 1) {
-				target->attribute[0] = 1;
-				desc.bIsUnconscious = True;
-			}
+			int dontKill = *(int*)parser->CallFunc(dontKillcheckFuncIndex);
+			if (dontKill) target->attribute[0] = 1;
 		}
-		target->OnDamage_Effects_End(desc);
+
+		desc.bIsDead = (target->attribute[0] <= 0);
+		desc.bIsUnconscious = target->IsHuman() ? (target->attribute[0] == 1) : False;
 		target->OnDamage_Events(desc);
 
 		int damMsgType = StExt_DamageMessageType_Default;
@@ -900,20 +897,28 @@ namespace Gothic_II_Addon
 	int oCNpc::EV_DamagePerFrame_StExt(oCMsgDamage* msg)
 	{
 		bool hasMeta = false;
-		if (msg && this && !msg->deleted)
-		{
-			oSDamageDescriptor& desc = msg->descDamage;
-			if (IsDamageDescriptorSane(desc) && IsNpcPointerValid(this))
+		try 
+		{ 
+			if (msg && this && !msg->deleted)
 			{
-				DamageMeta& damageMeta = PushDamageMeta(this, desc);
-				damageMeta.DamageInfo.DamageFlags |= StExt_DamageFlag_Dot;
-				hasMeta = true;
+				oSDamageDescriptor& desc = msg->descDamage;
+				if (IsDamageDescriptorSane(desc) && IsNpcPointerValid(this))
+				{
+					DamageMeta& damageMeta = PushDamageMeta(this, desc);
+					damageMeta.DamageInfo.DamageFlags |= StExt_DamageFlag_Dot;
+					hasMeta = true;
+				}
 			}
-		}
 
-		int result = THISCALL(Hook_oCNpc_EV_DamagePerFrame)(msg);
+			int result = THISCALL(Hook_oCNpc_EV_DamagePerFrame)(msg);
+			if (hasMeta) PopDamageMeta();
+			return result;
+		}
+		catch (const std::exception& e) { DEBUG_MSG("EV_DamagePerFrame_StExt - EXCEPTION: " + Z(e.what()) + "!"); }
+		catch (...) { DEBUG_MSG("EV_DamagePerFrame_StExt - UNKNOWN EXCEPTION!"); }
+
 		if (hasMeta) PopDamageMeta();
-		return result;
+		return True;		
 	}
 	
 	HOOK Hook_oCNpc_OnDamage PATCH (&oCNpc::OnDamage, &oCNpc::OnDamage_StExt);
@@ -931,15 +936,21 @@ namespace Gothic_II_Addon
 			DEBUG_MSG("OnDamage_StExt: BREAK: target is corrupted!?");
 			return;
 		}
-		if (!IsDamageDescriptorSane(desc))
-		{
-			DEBUG_MSG("OnDamage_StExt: BREAK: damage descriptor is corrupted!?");
-			return;
+
+		try 
+		{ 
+			if (!IsDamageDescriptorSane(desc)) {
+				DEBUG_MSG("OnDamage_StExt: BREAK: damage descriptor is corrupted!?");
+				return;
+			}
 		}
+		catch (const std::exception& e) { DEBUG_MSG("OnDamage_StExt - EXCEPTION! (damage descriptor is corrupted!): " + Z(e.what()) + "!"); return; }
+		catch (...) { DEBUG_MSG("OnDamage_StExt - UNKNOWN EXCEPTION! (damage descriptor is corrupted!)"); return; }
+
 		if (desc.pNpcAttacker && !IsNpcPointerValid(desc.pNpcAttacker)) desc.pNpcAttacker = Null;
 
 		DEBUG_MSG_DAM("OnDamage_StExt", "ENTER", desc.pNpcAttacker, this);
-		DEBUG_MSG_DAMDESC(desc, "OnDamage_StExt - ENTER", this);
+		DEBUG_MSG_DAMDESC(desc, "OnDamage_StExt - ENTER", this);		
 		DamageMeta& damageMeta = PushDamageMeta(this, desc);
 
 		if (desc.pFXHit)
@@ -992,7 +1003,11 @@ namespace Gothic_II_Addon
 		{
 			DEBUG_MSG_DAM("OnDamage_StExt", "EXIT. Reason: Handle overlay damage...", desc.pNpcAttacker, this);
 			damageMeta.DamageInfo.DamageFlags |= StExt_DamageFlag_Dot;
-			THISCALL(Hook_oCNpc_OnDamage)(desc);
+
+			try { THISCALL(Hook_oCNpc_OnDamage)(desc); }
+			catch (const std::exception& e) { DEBUG_MSG("OnDamage (overlay) - EXCEPTION: " + Z(e.what()) + "!"); }
+			catch (...) { DEBUG_MSG("OnDamage (overlay) - UNKNOWN EXCEPTION!"); }
+
 			PopDamageMeta();
 			return;
 		}
@@ -1020,11 +1035,13 @@ namespace Gothic_II_Addon
 
 		// Original damage handler
 		DEBUG_MSG_DAM("OnDamage", "ENTER.", desc.pNpcAttacker, this);
-		//THISCALL(Hook_oCNpc_OnDamage)(desc);
 
-		// I know, I know - not good practice just swallow exceptions...
-		// But here nothing I can do with NB code... At least for now.
-		try { THISCALL(Hook_oCNpc_OnDamage)(desc); }
+		bool descStillSane = false;
+		try 
+		{ 
+			THISCALL(Hook_oCNpc_OnDamage)(desc); 
+			descStillSane = IsDamageDescriptorSane(desc);
+		}
 		catch (const std::exception& e)
 		{
 			DEBUG_MSG("OnDamage - EXCEPTION: " + Z(e.what()) + "!");
@@ -1037,9 +1054,6 @@ namespace Gothic_II_Addon
 			PopDamageMeta();
 			return;
 		}
-
-		const bool descStillSane = IsDamageDescriptorSane(desc);
-		DEBUG_MSG_IF(!descStillSane, "OnDamage - BEFORE EXIT. Damage descriptor is corrupted!");
 
 		if (damageMeta.Attacker && !IsNpcPointerValid(damageMeta.Attacker))
 		{
@@ -1083,6 +1097,8 @@ namespace Gothic_II_Addon
 	HOOK ivk_oCNpc_ChangeAttribute PATCH(&oCNpc::ChangeAttribute, &oCNpc::ChangeAttribute_StExt);
 	void oCNpc::ChangeAttribute_StExt(int attrIndex, int value)
 	{
+		static int dontKillcheckFuncIndex = parser->GetIndex("StExt_DontKillByExtraDamage_Engine");
+
 		if ((attrIndex == NPC_ATR_HITPOINTS) && (value < 0))
 		{
 			if (!this || !IsNpcPointerValid(this)) 
@@ -1168,8 +1184,20 @@ namespace Gothic_II_Addon
 			}
 
 			damage = value * (-1);
+			bool mustKill = false;
+			if ((damage >= this->attribute[0]) && (this->attribute[0] > 1) && this->IsHuman())
+			{
+				int dontKill = *(int*)parser->CallFunc(dontKillcheckFuncIndex);
+				bool saveLife = HasFlag(currentDamageInfo.Flags, StExt_IncomingDamageFlag_Index_DontKill) || dontKill;
+				if (saveLife)
+					value = -(this->attribute[0] - 1);
+				else mustKill = true;
+			}
+
 			DEBUG_MSG_FUNC("ChangeAttribute_StExt", "Apply " + Z(damage) + " damage to '" + SafeNpcName(this) + "' ...");
+			int hpBefore = this->attribute[0];
 			THISCALL(ivk_oCNpc_ChangeAttribute)(attrIndex, value);
+			DEBUG_MSG_DAM("ChangeAttribute_StExt", "After original hp handler. " + GetNpcHpEs(this) + " | Value: " + Z(value), attaker, this);
 
 			SetScriptDamageActors(attaker, this, weapon);
 			parser->SetInstance(StExt_IcomingDamageInfo_SymId, &currentDamageInfo);
@@ -1177,8 +1205,39 @@ namespace Gothic_II_Addon
 
 			parser->SetInstance(StExt_IcomingDamageInfo_SymId, Null);
 			DamageInfoMetaData.IsPending = false;
+
+			if (mustKill && (this->attribute[0] > 0)) this->attribute[0] = 0;
+			else if (hpBefore == this->attribute[0])
+			{
+				DEBUG_MSG("ChangeAttribute_StExt: Damage wasn't applied?! Hp now: " + Z(this->attribute[0]) + " | Hp was: " + Z(hpBefore) + " | Damage: " + Z(damage));
+				this->attribute[0] += value;
+				if (this->attribute[0] < 0) this->attribute[0] = 0;
+			}
 			return;
 		}
 		THISCALL(ivk_oCNpc_ChangeAttribute)(attrIndex, value);
+	}
+
+	HOOK Hook_oCNpc_DoDie PATCH(&oCNpc::DoDie, &oCNpc::DoDie_StExt);
+	void oCNpc::DoDie_StExt(oCNpc* atk)
+	{
+		if (this->attribute[0] > 0)
+		{
+			DEBUG_MSG("DoDie_StExt: target not dead... yet?!");
+			return;
+		}
+
+		if (atk && atk->IsSelfPlayer())
+		{
+			oCNpc* trueAtk = Null;
+			oCNpcEx* npcEx = dynamic_cast<oCNpcEx*>(this);
+			int trueAtkPtr = 0;
+			if (npcEx && GetNpcExtensionVar(npcEx->m_pVARS[StExt_AiVar_Uid], StExt_AiVar_LastAtkPtr, trueAtkPtr))
+			{
+				trueAtk = (oCNpc*)trueAtkPtr;
+				if (IsNpcPointerValid(trueAtk)) atk = trueAtk;
+			}
+		}
+		THISCALL(Hook_oCNpc_DoDie)(atk);
 	}
 }

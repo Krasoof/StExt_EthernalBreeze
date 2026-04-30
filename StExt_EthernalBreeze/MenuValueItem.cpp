@@ -109,6 +109,9 @@ namespace Gothic_II_Addon
 		bool hasPrimary = ReadValue(PrimaryValueName, primaryStr, PrimaryValueArrayIndex, false, primaryVal);
 		bool hasSecondary = IsRanged || !hasPrimary ? ReadValue(SecondaryValueName, secondaryStr, SecondaryValueArrayIndex, true, secondaryVal) : false;
 
+		CurrentPrimaryValue = primaryVal;
+		CurrentSecondaryValue = secondaryVal;
+
 		if (hasPrimary)
 		{
 			Text = primaryStr;

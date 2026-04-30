@@ -35,6 +35,7 @@ namespace Gothic_II_Addon
 	extern Map<int, AuraData> AurasData;
 	extern Map<int, TimedEffectData> TimedEffectsData;
 	extern Map<int, NpcAbility> NpcAbilitiesData;
+	extern Map<int, CorruptionTouchStatData> CorruptionTouchStatsData;
 
 	extern Array<ConfigPresetData> GameConfigsPresets;
 	extern Array<ModExtensionInfo> ModPluginsInfo;
@@ -105,6 +106,7 @@ namespace Gothic_II_Addon
 	extern int StExt_ModOther_SymId;
 	extern int StExt_FocusNpc_SymId;
 
+	extern int StExt_AiVar_LastAtkPtr;
 	extern int StExt_AiVar_IsRandomized;
 	extern int StExt_AiVar_Uid;
 	extern int StExt_AiVar_EsCur;
@@ -172,7 +174,9 @@ namespace Gothic_II_Addon
 	void StartUncaper();
 	void StopUncaper();
 	void StatsUncaperLoop();
-	void inline UpdateUncapedStat(int indx);
+	void extern UpdateUncapedStat(int indx);
+
+	extern void ProcessPlayerEvent(oCNpc* npc, const int eventType, const int eventResult);
 
 	extern const AuraData* GetAuraById(const int id);
 	extern const ExtraStatData* GetExtraStatDataById(const int id);

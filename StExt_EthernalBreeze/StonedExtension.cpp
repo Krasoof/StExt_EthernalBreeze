@@ -9,6 +9,7 @@ namespace Gothic_II_Addon
     Map<int, ExtraStatData> ExtraStatsData;
     Map<int, ExtraStatData> ExtraConditionStatsData;
     Map<int, zSTRING> ExtraStatsNameData;
+    Map<int, CorruptionTouchStatData> CorruptionTouchStatsData;
     Array<ExtraMasteryData> ExtraMasteriesData;
     StringMap<ExtraConfigData> ExtraConfigsData(256);
 
@@ -21,8 +22,10 @@ namespace Gothic_II_Addon
     Array<MagicInfusionData> InfusionAffixes;
     Array<MagicInfusionData> InfusionSuffixes;
     Array<MagicInfusionData> InfusionPreffixes;
+    Array<RandomNpcRecord> RandomNpcData;
 
     StringMap<int> FuncIndexCache;
+    StringMap<int> InstanceIndexCache;
     StringMap<int> StructOffsetCache;
 
     SpellInfo CurrentSpellInfo;
@@ -93,6 +96,19 @@ namespace Gothic_II_Addon
         int funcIndex = parser->GetIndex(funcName);
         if (funcIndex != Invalid)
             FuncIndexCache.Insert(funcName, funcIndex);        
+        return funcIndex;
+    }
+
+    inline int GetInstanceIndex(zSTRING& instanceName)
+    {
+        instanceName.Upper();
+        int* cacheIndex = InstanceIndexCache.Find(instanceName);
+        if (cacheIndex != Null)
+            return *cacheIndex;
+
+        int funcIndex = parser->GetIndex(instanceName);
+        if (funcIndex != Invalid)
+            InstanceIndexCache.Insert(instanceName, funcIndex);
         return funcIndex;
     }
 
@@ -456,7 +472,7 @@ namespace Gothic_II_Addon
     {
         zSTRING instName;
         parser->GetParameter(instName);
-        int index = (instName.IsEmpty() || instName == "") ? Invalid : parser->GetIndex(instName);
+        int index = (instName.IsEmpty() || instName == "") ? Invalid : GetInstanceIndex(instName);
         if (index == Invalid)
             DEBUG_MSG("Instance '" + instName + "' not found!");
         parser->SetReturn(index);
@@ -517,6 +533,16 @@ namespace Gothic_II_Addon
             m2 = static_cast<float>(max);
             result = static_cast<int>((m1 / m2) * 100.0f);
         }
+        parser->SetReturn(result);
+        return True;
+    }
+
+    int __cdecl StExt_GetRandFloatRange()
+    {
+        float min, max, result;
+        parser->GetParameter(max);
+        parser->GetParameter(min);
+        result = StExt_Rand::Range(min, max);
         parser->SetReturn(result);
         return True;
     }
@@ -682,6 +708,7 @@ namespace Gothic_II_Addon
 
         Array<oCMobContainer*> chests = Array<oCMobContainer*>();
         auto node = world->voblist;
+        zSTRING objectName = "";
         while (node)
         {
             zCVob* vob = node->GetData();
@@ -690,6 +717,13 @@ namespace Gothic_II_Addon
                 auto chest = dynamic_cast<oCMobContainer*>(vob);
                 if (chest)
                 {
+                    objectName = chest->GetObjectName();
+                    if (objectName.IsEmpty() || objectName.StartWith("BOOKSHELF"))
+                    {
+                        node = node->next;
+                        continue;
+                    };
+
                     if (!onlyEmpty) chests.Insert(chest);
                     else if (onlyEmpty && (!chest->items || !chest->items->contents || chest->items->contents->GetNumInList() == 0))
                         chests.Insert(chest);
@@ -1068,6 +1102,7 @@ namespace Gothic_II_Addon
             {
                 parser->SetInstance(StExt_ModSelf_SymId, pNpc);
                 parser->CallFunc(initFuncIndx);
+                parser->SetInstance(StExt_ModSelf_SymId, Null);
             }
         }
         return True;
@@ -1148,18 +1183,30 @@ namespace Gothic_II_Addon
             return False;
         }
 
+        oCNpc* foundNpc = Null;
+        float foundNpcDist = float_MAX;
+        float tmpDistance = 0.0f;
         for (int i = 0; i < npcArray.GetNum(); ++i)
         {
             if (npcArray[i] == Null) continue;
+
+            tmpDistance = center->GetDistanceToVob(*npcArray[i]);
+            if (tmpDistance > foundNpcDist) continue;
 
             parser->SetInstance(StExt_ModSelf_SymId, npcArray[i]);
             int condResult = *(int*)parser->CallFunc(condFuncIndx);
             if (condResult)
             {
-                parser->SetInstance(StExt_ModOther_SymId, npcArray[i]);
-                parser->SetReturn(true);
-                return True;
-            };
+                foundNpc = npcArray[i];
+                foundNpcDist = tmpDistance;
+            }
+        }
+
+        if (foundNpc)
+        {
+            parser->SetInstance(StExt_ModOther_SymId, foundNpc);
+            parser->SetReturn(true);
+            return True;
         }
         parser->SetReturn(false);
         return False;
@@ -1609,7 +1656,7 @@ namespace Gothic_II_Addon
             return False;
         }
 
-        int instanceId = parser->GetIndex(throwInstanceName);
+        int instanceId = parser->GetIndex(throwInstanceName.Upper());
         if (instanceId == Invalid)
         {
             DEBUG_MSG("StExt_ThrowItem - throwable item not found!");
@@ -1743,7 +1790,7 @@ namespace Gothic_II_Addon
         oCItem* itm = (oCItem*)parser->GetInstance();
         ResultString.Clear();
         if (itm)        
-            ResultString = itm->GetInstanceName();        
+            ResultString = itm->GetInstanceName().Upper();
         DEBUG_MSG_IF(!itm, "StExt_GetItemInstanceName - itm is null");
         
         DoReturnString();
@@ -1772,6 +1819,28 @@ namespace Gothic_II_Addon
                 case UiValueDisplayType::Default:
                 default: ResultString = zSTRING(statVal); break;
             }
+        }
+
+        DoReturnString();
+        return True;
+    }
+
+    int __cdecl StExt_FormatIntToString()
+    {
+        int value, valueType;
+        parser->GetParameter(valueType);
+        parser->GetParameter(value);
+
+        ResultString.Clear();
+        UiValueDisplayType displayType = (UiValueDisplayType)valueType;
+        switch (displayType)
+        {
+            case UiValueDisplayType::Bool: ConvertValueToYesNo(ResultString, value); break;
+            case UiValueDisplayType::Permille: ConvertValueToPermille(ResultString, value); break;
+            case UiValueDisplayType::Percent: ResultString = zSTRING(value) + "%"; break;
+            case UiValueDisplayType::DeciPercent: ResultString = zSTRING(value * 10) + "%"; break;
+            case UiValueDisplayType::Default:
+            default: ResultString = zSTRING(value); break;
         }
 
         DoReturnString();
@@ -2208,10 +2277,12 @@ namespace Gothic_II_Addon
                 return False;
             }
 
-            DEBUG_MSG("StExt_BuildEnchntedItemsSellForm - items count: " + Z(itemsCount));
+            DEBUG_MSG("StExt_BuildEnchntedItemsSellForm - items (raw) count: " + Z(itemsCount));
             for (int i = 0; i < itemsCount; ++i)
             {
-                CraftInfoData craftData = CraftInfoData();
+                if (!foundItems[i] || !GetItemExtension(foundItems[i])) continue;
+
+                CraftInfoData craftData = CraftInfoData{};
                 craftData.Price = foundItems[i]->value;
                 craftData.ResultInstance = GetItemInstanceName(foundItems[i]);
                 parser->SetInstance("STEXT_CRAFTINFO", &craftData);
@@ -2364,9 +2435,6 @@ namespace Gothic_II_Addon
         return True;
     }
 
-
-    // NEW
-
     int __cdecl StExt_CallActorFunc()
     {
         zSTRING funcName;
@@ -2380,6 +2448,7 @@ namespace Gothic_II_Addon
         {
             parser->SetInstance(StExt_ModSelf_SymId, self);
             parser->CallFunc(funcIndex);
+            parser->SetInstance(StExt_ModSelf_SymId, Null);
             return True;
         }
         DEBUG_MSG("StExt_CallActorFunc: Func '" + funcName + "' not found!");
@@ -2402,6 +2471,8 @@ namespace Gothic_II_Addon
             parser->SetInstance(StExt_ModSelf_SymId, self);
             parser->SetInstance(StExt_ModOther_SymId, other);
             parser->CallFunc(funcIndex);
+            parser->SetInstance(StExt_ModSelf_SymId, Null);
+            parser->SetInstance(StExt_ModOther_SymId, Null);
             return True;
         }
         DEBUG_MSG("StExt_CallActorsFunc: Func '" + funcName + "' not found!");
@@ -2709,6 +2780,62 @@ namespace Gothic_II_Addon
         return True;
     }
 
+    int __cdecl StExt_SetCorruptionTouchStatData()
+    {
+        int statId, statMax, statPerPoint;
+        parser->GetParameter(statMax);
+        parser->GetParameter(statPerPoint);
+        parser->GetParameter(statId);
+
+        CorruptionTouchStatData data = CorruptionTouchStatData{};
+        data.StatId = statId;
+        data.StatMax = statMax;
+        data.StatsPerPoint = statPerPoint;
+        CorruptionTouchStatsData.Insert(statId, data);
+        return True;
+    }
+
+    int __cdecl StExt_SetRandomNpcData()
+    {
+        RandomNpcRecord& npcData = RandomNpcData.Create();
+        npcData.Power = Invalid; 
+        npcData.InstanceName.Clear();
+        npcData.Count = 0;
+
+        parser->GetParameter(npcData.Count);
+        parser->GetParameter(npcData.Power);
+        parser->GetParameter(npcData.InstanceName);
+        return True;
+    }
+
+    int __cdecl StExt_GetRandomNpcData()
+    {
+        int powerMin, powerMax;
+        parser->GetParameter(powerMax);
+        parser->GetParameter(powerMin);
+
+        if (powerMin > powerMax) 
+            std::swap(powerMin, powerMax);
+
+        const uint total = RandomNpcData.GetNum();
+        if (total <= 0) { parser->SetReturn(Null); return False; }
+
+        RandomNpcRecord* selectedData = Null;
+        int validCount = 0;
+
+        for (uint i = 0; i < total; ++i)
+        {
+            const RandomNpcRecord& rec = RandomNpcData[i];
+            if (rec.Power < powerMin || rec.Power > powerMax) continue;
+
+            ++validCount;
+            if (!StExt_Rand::Index(validCount)) selectedData = &RandomNpcData[i];
+        }
+
+        parser->SetReturn(selectedData);
+        return True;
+    }
+
     //-----------------------------------------------------------------
     //							 DEFINE API
     //-----------------------------------------------------------------
@@ -2719,13 +2846,15 @@ namespace Gothic_II_Addon
         parser->DefineExternal("StExt_FloatMult", StExt_FloatMult, zPAR_TYPE_FLOAT, zPAR_TYPE_FLOAT, zPAR_TYPE_FLOAT, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_FloatPow", StExt_FloatPow, zPAR_TYPE_FLOAT, zPAR_TYPE_FLOAT, zPAR_TYPE_FLOAT, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_IntPow", StExt_IntPow, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_VOID);
-        parser->DefineExternal("StExt_FloatPowAsInt", StExt_FloatPowAsInt, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_FLOAT, zPAR_TYPE_VOID);        
+        parser->DefineExternal("StExt_FloatPowAsInt", StExt_FloatPowAsInt, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_FLOAT, zPAR_TYPE_VOID);
+        parser->DefineExternal("StExt_GetRandFloatRange", StExt_GetRandFloatRange, zPAR_TYPE_FLOAT, zPAR_TYPE_FLOAT, zPAR_TYPE_FLOAT, zPAR_TYPE_VOID);
 
         parser->DefineExternal("StExt_GetPercentBasedOnValue", StExt_GetPercentBasedOnValue, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_VOID);        
         parser->DefineExternal("StExt_GetInstanceIdByName", StExt_GetInstanceIdByName, zPAR_TYPE_INT, zPAR_TYPE_STRING, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_GetAuraData", StExt_GetAuraData, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_UpdatePcStats", StExt_UpdatePcStats, zPAR_TYPE_VOID, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_SpawnNpcWithFunc", StExt_SpawnNpcWithFunc, zPAR_TYPE_VOID, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_STRING, zPAR_TYPE_STRING, zPAR_TYPE_VOID);
+
         parser->DefineExternal("StExt_ForEachNpcInRadius", StExt_ForEachNpcInRadius, zPAR_TYPE_VOID, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_STRING, zPAR_TYPE_STRING, zPAR_TYPE_STRING, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_InfuseNpcWithMagic", StExt_InfuseNpcWithMagic, zPAR_TYPE_INSTANCE, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_DisposeNpcInfusion", StExt_DisposeNpcInfusion, zPAR_TYPE_INSTANCE, zPAR_TYPE_INSTANCE, zPAR_TYPE_VOID);
@@ -2790,6 +2919,8 @@ namespace Gothic_II_Addon
         parser->DefineExternal("StExt_FindTargetInRadius", StExt_FindTargetInRadius, zPAR_TYPE_INT, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_STRING, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_UseEnchantedItem", StExt_UseEnchantedItem, zPAR_TYPE_VOID, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_StatValueToString", StExt_StatValueToString, zPAR_TYPE_STRING, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_VOID);
+        parser->DefineExternal("StExt_FormatIntToString", StExt_FormatIntToString, zPAR_TYPE_STRING, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_VOID);
+
         parser->DefineExternal("StExt_GetItemById", StExt_GetItemById, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_DeleteTempItem", StExt_DeleteTempItem, zPAR_TYPE_VOID, zPAR_TYPE_INSTANCE, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_GetItemNameById", StExt_GetItemNameById, zPAR_TYPE_STRING, zPAR_TYPE_INT, zPAR_TYPE_VOID);        
@@ -2838,6 +2969,11 @@ namespace Gothic_II_Addon
         parser->DefineExternal("StExt_Npc_SelectAbility", StExt_Npc_SelectAbility, zPAR_TYPE_INT, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_Npc_SearchAbility", StExt_Npc_SearchAbility, zPAR_TYPE_INT, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_Npc_HasAbility", StExt_Npc_HasAbility, zPAR_TYPE_INT, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_VOID);
+
+        parser->DefineExternal("StExt_SetCorruptionTouchStatData", StExt_SetCorruptionTouchStatData, zPAR_TYPE_VOID, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_VOID);
+
+        parser->DefineExternal("StExt_SetRandomNpcData", StExt_SetRandomNpcData, zPAR_TYPE_VOID, zPAR_TYPE_STRING, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_VOID);
+        parser->DefineExternal("StExt_GetRandomNpcData", StExt_GetRandomNpcData, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_VOID);
     }
 
     //-----------------------------------------------------------------
@@ -2855,14 +2991,19 @@ namespace Gothic_II_Addon
     HOOK Hook_oCItemContainer_GetValueMultiplier PATCH(&oCItemContainer::GetValueMultiplier, &oCItemContainer::GetValueMultiplier_StExt);
     float oCItemContainer::GetValueMultiplier_StExt()
     {
+        static int tradeValueMultSymIndex = parser->GetIndex("TRADE_VALUE_MULTIPLIER");
         if (ItemSellPriceMult < 0.01f)
-            ItemSellPriceMult = parser->GetSymbol("trade_value_multiplier")->single_floatdata;
+            ItemSellPriceMult = parser->GetSymbol(tradeValueMultSymIndex)->single_floatdata;
+
+        if (ItemSellPriceMult >= 5.0f) ItemSellPriceMult = 5.0f;
         return (ItemSellPriceMult >= 0.01f) ? ItemSellPriceMult : 0.1f;
     }
 
     HOOK Hook_oCSpell_Cast PATCH(&oCSpell::Cast, &oCSpell::StExt_Cast);
     int oCSpell::StExt_Cast()
     {
+        static int SpellInfoSymIndex = parser->GetIndex("STEXT_SPELLINFO");
+
         if (this->spellCasterNpc != player)
         {
             const int isCasted = THISCALL(Hook_oCSpell_Cast)();
@@ -2879,9 +3020,10 @@ namespace Gothic_II_Addon
             CurrentSpellInfo.SpellId = this->spellID;
             CurrentSpellInfo.SpellLevel = this->spellLevel;
 
-            parser->SetInstance("STEXT_SPELLINFO", &CurrentSpellInfo);
+            parser->SetInstance(SpellInfoSymIndex, &CurrentSpellInfo);
             parser->CallFunc(StExt_OnSpellCastFunc);
-            parser->SetInstance("STEXT_SPELLINFO", Null);
+            ProcessPlayerEvent(player, StExt_PcActionType_OnSpellCast, isCasted);
+            parser->SetInstance(SpellInfoSymIndex, Null);
         }
         return isCasted;
     }

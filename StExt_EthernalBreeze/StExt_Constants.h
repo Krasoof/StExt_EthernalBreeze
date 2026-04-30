@@ -58,6 +58,21 @@ namespace Gothic_II_Addon
 	const int StExt_NpcAbility_Flag_UseCooldown = 512;
 	const int StExt_NpcAbility_Flag_UseSpell = 1024;
 
+	const int StExt_PcActionType_Null = -1;
+	const int StExt_PcActionType_OnInput = 0;
+	const int StExt_PcActionType_OnSpellCast = 1;
+	const int StExt_PcActionType_OnAttackForward = 2;
+	const int StExt_PcActionType_OnAttackLeft = 3;
+	const int StExt_PcActionType_OnAttackRight = 4;
+	const int StExt_PcActionType_OnAttackRun = 5;
+	const int StExt_PcActionType_OnAttackFinish = 6;
+	const int StExt_PcActionType_OnParade = 7;
+	const int StExt_PcActionType_OnShootAt = 8;
+	const int StExt_PcActionType_OnDefend = 9;
+
+	const int StExt_PcActionFlag_None = 0;
+	const int StExt_PcActionFlag_HasInputData = 1 << 0;
+
 constexpr auto ConfigsExportTemplate = R"(META
 {
     After = ConfigsPresets.d;

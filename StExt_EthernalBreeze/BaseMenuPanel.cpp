@@ -84,6 +84,28 @@ namespace Gothic_II_Addon
 		return Null;
 	}
 
+	BaseMenuElement* BaseMenuPanel::FindElementByName(const zSTRING& elementName)
+	{
+		BaseMenuElement* result = Null;
+		for (uint i = 0; i < Items.GetNum(); ++i)
+		{
+			BaseMenuElement* item = Items[i];
+
+			if (item->Name.CompareI(elementName))
+			{
+				result = item;
+				break;
+			}
+
+			BaseMenuPanel* container = dynamic_cast<BaseMenuPanel*>(item);
+			if (container) {
+				result = container->FindElementByName(elementName);
+				if (result) break;
+			}
+		}
+		return result;
+	}
+
 	void BaseMenuPanel::Resize() 
 	{ 
 		BaseMenuElement::Resize();

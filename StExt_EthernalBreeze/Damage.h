@@ -69,6 +69,7 @@ namespace Gothic_II_Addon
     const int StExt_DamageFlag_Roots = 33554432;
     const int StExt_DamageFlag_Chain = 67108864;
     const int StExt_DamageFlag_Stream = 134217728;
+    const int StExt_DamageFlag_OnDeath = 268435456;
 
     const int DamageDescFlag_ExtraDamage = 65536;
     const int DamageDescFlag_DotDamage = 131072;
