@@ -45,6 +45,7 @@ namespace Gothic_II_Addon
             ProcessPendingDamages();
             StonedExtension_Loop();
             TimedEffectsLoop();
+            StExt_FloatingDamage_Loop();
             DrawModInfo();
         }
     }
@@ -138,6 +139,7 @@ namespace Gothic_II_Addon
         MsgTray_Clear();
         StopUncaper();
         ClearDamageMeta();
+        StExt_FloatingDamage_Clear();
         ClearTimedEffects();
         ClearNpcExtensionData();
         LoadGeneratedItems();
@@ -183,6 +185,7 @@ namespace Gothic_II_Addon
         FinalizeTimedEffects();
         ClearNpcExtensionPointers();
         StopUncaper();
+        StExt_FloatingDamage_Clear();
     }
     void Game_LoadEnd_ChangeLevel()
     {

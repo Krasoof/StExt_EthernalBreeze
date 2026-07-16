@@ -1153,7 +1153,12 @@ namespace Gothic_II_Addon
 		// Call script damage post-process
 		if (damageMeta.Attacker)
 			parser->CallFunc(OnDamageAfterFunc);
-		
+
+		// Floating damage number for what the HERO just dealt to an enemy.
+		if (damageMeta.Attacker && damageMeta.Attacker->IsSelfPlayer()
+			&& !this->IsSelfPlayer() && damageMeta.DamageInfo.RealDamage > 0)
+			StExt_SpawnFloatingDamage(this, damageMeta.DamageInfo.RealDamage, false);
+
 		// prevent multi-aoe damage from spells
 		// mark spellFx as processed
 		if (descStillSane && desc.pFXHit && !damageMeta.SpellFxInDict)

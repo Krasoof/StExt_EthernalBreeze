@@ -165,4 +165,9 @@ namespace Gothic_II_Addon
     void ProcessPendingDamages();
     extern void ClearDamageMeta();
     void ThrowItem(ThrowItemDescriptor& itemDescriptor);
+
+    // Floating damage numbers (FloatingDamage.cpp)
+    void StExt_SpawnFloatingDamage(oCNpc* target, int damage, bool isCrit);
+    void StExt_FloatingDamage_Loop();
+    void StExt_FloatingDamage_Clear();
 }
