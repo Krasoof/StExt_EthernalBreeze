@@ -373,9 +373,11 @@ namespace Gothic_II_Addon
             return false;
         }
 
-        auto addStat = [&](const int statId, const int statBonus) 
+        auto addStat = [&](const int statId, const int statBonus)
         {
-            statsArray->SetValue(statsArray->intdata[statId] + statBonus, statId);
+            // Direct intdata write - the same proven pattern StExt_UpdatePcStats
+            // uses. SetValue() was silently not landing in the script array.
+            statsArray->intdata[statId] = statsArray->intdata[statId] + statBonus;
             parser->CallFunc(HandlePcStatChangeFunc, statId, statBonus);
         };
 
@@ -411,7 +413,8 @@ namespace Gothic_II_Addon
 
         auto removeStat = [&](const int statId, const int statBonus)
         {
-            statsArray->SetValue(ValidateValueMin(statsArray->intdata[statId] - statBonus, 0), statId);
+            // Direct intdata write - same rationale as addStat above.
+            statsArray->intdata[statId] = ValidateValueMin(statsArray->intdata[statId] - statBonus, 0);
             parser->CallFunc(HandlePcStatChangeFunc, statId, -statBonus);
         };
 
