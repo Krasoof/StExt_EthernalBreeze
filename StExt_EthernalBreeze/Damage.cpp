@@ -9,6 +9,21 @@ namespace Gothic_II_Addon
 	const int ITEM_FLAG_2HD_SWD = 1 << 16;   // 65536  2h sword
 	const int ITEM_FLAG_2HD_AXE = 1 << 17;   // 131072 2h axe
 
+	// Damage engine selector, read once from the script const StExt_UseNewDamageEngine.
+	// 0 = legacy (rescale raw channels by the RealDamage ratio), 1 = new (restore HP and
+	// re-apply RealDamage). See Constants.d for the full rationale.
+	int StExt_NewDamageEngineEnabled()
+	{
+		static int enabled = -1;
+		if (enabled < 0)
+		{
+			zCPar_Symbol* sym = parser ? parser->GetSymbol("StExt_UseNewDamageEngine") : Null;
+			enabled = sym ? (sym->single_intdata != 0 ? 1 : 0) : 0;
+			DEBUG_MSG(enabled ? "Damage engine: NEW (restore+reapply)" : "Damage engine: LEGACY (ratio rescale)");
+		}
+		return enabled;
+	}
+
 	const int SPELLEFFECT_STORE_TIME = 3600;
 
 	struct DamageMeta
@@ -1080,20 +1095,38 @@ namespace Gothic_II_Addon
 		// Scale the raw damage channels by the intended ratio (both directions);
 		// full mitigation zeroes the hit. Gated to hero-involved hits only, so
 		// NPC-vs-NPC damage is untouched. Never underflows (scale, not subtract).
-		if (realBeforeBegin > 0 && damageMeta.DamageInfo.RealDamage != realBeforeBegin
-			&& ((damageMeta.Attacker && damageMeta.Attacker->IsSelfPlayer()) || this->IsSelfPlayer())
-			&& IsDamageDescriptorSane(desc))
+		// Is this a hit the mod is allowed to re-price at all? (hero on either side)
+		const bool heroInvolved = ((damageMeta.Attacker && damageMeta.Attacker->IsSelfPlayer()) || this->IsSelfPlayer());
+
+		// --- NEW DAMAGE ENGINE (StExt_UseNewDamageEngine = 1) -------------------
+		// Union_AlterDamage pattern: instead of rescaling the raw channels to chase
+		// the script's number, remember HP, let the original run, restore HP and then
+		// apply RealDamage ourselves. RealDamage is then the ONLY source of truth.
+		// The apply goes through ChangeAttribute so the engine still runs its own
+		// death / unconscious sequence (an NPC left standing at 0 HP is exactly what
+		// hand-written HP writes cause).
+		const bool useNewEngine = (StExt_NewDamageEngineEnabled() != 0)
+			&& heroInvolved && damageMeta.IsInitialDamage && IsDamageDescriptorSane(desc);
+		const int newEngineWanted = damageMeta.DamageInfo.RealDamage;
+		const int newEngineOldHp = useNewEngine ? this->attribute[NPC_ATR_HITPOINTS] : 0;
+
+		if (!useNewEngine)
 		{
-			const int realWanted = damageMeta.DamageInfo.RealDamage;
-			if (realWanted <= 0)
+			// --- LEGACY: rescale the raw channels by the intended ratio ---
+			if (realBeforeBegin > 0 && damageMeta.DamageInfo.RealDamage != realBeforeBegin
+				&& heroInvolved && IsDamageDescriptorSane(desc))
 			{
-				for (int i = 0; i < oEDamageIndex_MAX; ++i) desc.aryDamage[i] = 0UL;
-			}
-			else
-			{
-				const float mainRatio = (float)realWanted / (float)realBeforeBegin;
-				for (int i = 0; i < oEDamageIndex_MAX; ++i)
-					desc.aryDamage[i] = (unsigned long)((float)desc.aryDamage[i] * mainRatio);
+				const int realWanted = damageMeta.DamageInfo.RealDamage;
+				if (realWanted <= 0)
+				{
+					for (int i = 0; i < oEDamageIndex_MAX; ++i) desc.aryDamage[i] = 0UL;
+				}
+				else
+				{
+					const float mainRatio = (float)realWanted / (float)realBeforeBegin;
+					for (int i = 0; i < oEDamageIndex_MAX; ++i)
+						desc.aryDamage[i] = (unsigned long)((float)desc.aryDamage[i] * mainRatio);
+				}
 			}
 		}
 
@@ -1140,6 +1173,12 @@ namespace Gothic_II_Addon
 		if (watchParade && this->didParade)
 			parser->CallFunc(StExt_OnPlayerParadeSuccessFunc);
 
+		// NEW ENGINE: the original just priced the hit its own way. Re-price it to the
+		// script's RealDamage. Must happen BEFORE UpdateDamageInfo, which overwrites
+		// DamageInfo.RealDamage back from the descriptor.
+		if (useNewEngine)
+			this->ApplyNewEngineDamage_StExt(newEngineOldHp, newEngineWanted);
+
 		UpdateDamageInfo(damageMeta.DamageInfo, desc);
 		SetScriptDamageActors(damageMeta.Attacker, damageMeta.Target, damageMeta.Weapon);
 		parser->SetInstance(StExt_DamageInfo_SymId, &damageMeta.DamageInfo);
@@ -1177,6 +1216,29 @@ namespace Gothic_II_Addon
 
 
 	HOOK ivk_oCNpc_ChangeAttribute PATCH(&oCNpc::ChangeAttribute, &oCNpc::ChangeAttribute_StExt);
+
+	// NEW DAMAGE ENGINE re-pricing (Union_AlterDamage pattern).
+	// The original OnDamage already subtracted its own number from HP. Put the pre-hit
+	// HP back and re-apply the script's RealDamage instead, so RealDamage is the single
+	// source of truth. The re-apply deliberately goes through the ENGINE's ChangeAttribute
+	// (the trampoline, NOT our hook): the hook drives the extra-damage/DOT pipeline and
+	// running the main hit through it would double-process the hit, while the trampoline
+	// still gives us vanilla death/unconscious handling.
+	void oCNpc::ApplyNewEngineDamage_StExt(int oldHp, int wantedDamage)
+	{
+		if (!this || !IsNpcPointerValid(this)) return;
+
+		// If the original already killed the npc, the death sequence has run - leave it
+		// dead rather than resurrecting it by restoring HP.
+		if (this->IsDead()) return;
+		this->attribute[NPC_ATR_HITPOINTS] = oldHp;
+
+		if (wantedDamage <= 0) return;   // fully mitigated -> hit lands for nothing
+
+		try { THISCALL(ivk_oCNpc_ChangeAttribute)(NPC_ATR_HITPOINTS, -wantedDamage); }
+		catch (...) { DEBUG_MSG("ApplyNewEngineDamage_StExt - EXCEPTION on ChangeAttribute!"); }
+	}
+
 	void oCNpc::ChangeAttribute_StExt(int attrIndex, int value)
 	{
 		static int dontKillcheckFuncIndex = parser->GetIndex("StExt_DontKillByExtraDamage_Engine");
