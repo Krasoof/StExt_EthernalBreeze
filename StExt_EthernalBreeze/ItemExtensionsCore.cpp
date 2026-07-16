@@ -341,6 +341,22 @@ namespace Gothic_II_Addon
     {
         if (!item || !extension) { return false; }
 
+        // TEMP DEBUG (remove after diagnosis): dump every extension stat slot
+        // to the screen via script so we can see raw StatId/StatValue content.
+        {
+            static int dbgSlotFunc = parser->GetIndex("StExt_DebugItemStatSlot");
+            if (dbgSlotFunc != Invalid)
+            {
+                parser->CallFunc(dbgSlotFunc, 19, 999, (int)extension->Type);
+                for (int i = 0; i < ItemExtension_OwnStats_Max; ++i)
+                    if (extension->OwnStatId[i] != Invalid)
+                        parser->CallFunc(dbgSlotFunc, 10 + i, extension->OwnStatId[i], extension->OwnStatValue[i]);
+                for (int i = 0; i < ItemExtension_Stats_Max; ++i)
+                    if (extension->StatId[i] != Invalid)
+                        parser->CallFunc(dbgSlotFunc, i, extension->StatId[i], extension->StatValue[i]);
+            }
+        }
+
         const ItemType itemType = static_cast<ItemType>(extension->Type);
         if ((itemType != ItemType::Armor) && (itemType != ItemType::Weapon) && (itemType != ItemType::Jewelry)) return true;
 
@@ -643,7 +659,8 @@ namespace Gothic_II_Addon
         const ItemClassKey itemClass = static_cast<ItemClassKey>(itemClassId);
         int itemInstnceId = Invalid;
 
-        if ((ItemsExtensionData->ItemsCount > static_cast<uint>(ItemsGeneratorConfigs.LookupGeneratedItemCountThreshold)) && 
+        if (StExt_ForceItemRank < 0 &&
+            (ItemsExtensionData->ItemsCount > static_cast<uint>(ItemsGeneratorConfigs.LookupGeneratedItemCountThreshold)) &&
             StExt_Rand::Permille(ItemsGeneratorConfigs.LookupGeneratedItemChance))
         {
             itemInstnceId = FindGeneratedItem(itemClass, power, ItemsGeneratorConfigs.ItemMaxRank);
@@ -687,6 +704,49 @@ namespace Gothic_II_Addon
         ItemExtension* extension = RollSpecificSimpleItem(power, itemClass);
         itemInstnceId = FinalizeItemGeneration(extension);
         return itemInstnceId;
+    }
+
+    // Enchant the PLAYER'S actual item in place: same base item (name,
+    // visuals, damage/protection) upgraded with a rolled magic extension.
+    // Returns the new dynamic instance id, or Invalid.
+    const int EnchantItemInPlace(oCItem* item, const int power)
+    {
+        if (!item) return Invalid;
+        if (GetItemExtension(item)) return Invalid; // already magic
+
+        DEBUG_MSG("EnchantItemInPlace: enchanting '" + item->GetInstanceName() + "' [power: " + Z(power) + "] ...");
+        ItemExtension* extension = RollInPlaceMagicItem(item, power <= 0 ? 1 : power);
+        return FinalizeItemGeneration(extension);
+    }
+
+    // Reroll ("stat mix") for an already-magic item: fresh full roll bound
+    // to the SAME base item (name/visuals/base stats via BaseInstanceName).
+    // Returns the new dynamic instance id; the old extension stays orphaned
+    // in storage (harmless) while the script swaps the inventory item.
+    const int RerollItemInPlace(oCItem* item, const int power)
+    {
+        if (!item) return Invalid;
+        ItemExtension* oldExt = GetItemExtension(item);
+        if (!oldExt) return Invalid; // plain item -> use EnchantItemInPlace
+
+        zSTRING baseName = oldExt->BaseInstanceName;
+        const int baseId = parser->GetIndex(baseName);
+        if (baseId == Invalid)
+        {
+            DEBUG_MSG("RerollItemInPlace: base instance '" + baseName + "' not found!");
+            return Invalid;
+        }
+
+        DEBUG_MSG("RerollItemInPlace: rerolling '" + item->GetInstanceName() + "' from base '" + baseName + "' [power: " + Z(power) + "] ...");
+        oCItem* baseItem = new oCItem();
+        int result = Invalid;
+        if (parser->CreateInstance(baseId, baseItem))
+        {
+            ItemExtension* fresh = RollInPlaceMagicItem(baseItem, power <= 0 ? 1 : power);
+            result = FinalizeItemGeneration(fresh);
+        }
+        if (baseItem) baseItem->Release();
+        return result;
     }
 
     void IdentifyItem(const oCItem* item)
