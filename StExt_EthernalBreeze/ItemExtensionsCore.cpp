@@ -341,28 +341,6 @@ namespace Gothic_II_Addon
     {
         if (!item || !extension) { return false; }
 
-        // TEMP DEBUG (remove after diagnosis): dump extension stat slots, but
-        // ONLY for items carrying the new 311+ stats (isolates the test ring
-        // from the on-load flood of every equipped item).
-        {
-            static int dbgSlotFunc = parser->GetIndex("StExt_DebugItemStatSlot");
-            bool dbgHasNewStat = false;
-            for (int i = 0; i < ItemExtension_OwnStats_Max && !dbgHasNewStat; ++i)
-                if (extension->OwnStatId[i] >= 311) dbgHasNewStat = true;
-            for (int i = 0; i < ItemExtension_Stats_Max && !dbgHasNewStat; ++i)
-                if (extension->StatId[i] >= 311) dbgHasNewStat = true;
-            if (dbgSlotFunc != Invalid && dbgHasNewStat)
-            {
-                parser->CallFunc(dbgSlotFunc, 19, 999, (int)extension->Type);
-                for (int i = 0; i < ItemExtension_OwnStats_Max; ++i)
-                    if (extension->OwnStatId[i] != Invalid)
-                        parser->CallFunc(dbgSlotFunc, 10 + i, extension->OwnStatId[i], extension->OwnStatValue[i]);
-                for (int i = 0; i < ItemExtension_Stats_Max; ++i)
-                    if (extension->StatId[i] != Invalid)
-                        parser->CallFunc(dbgSlotFunc, i, extension->StatId[i], extension->StatValue[i]);
-            }
-        }
-
         const ItemType itemType = static_cast<ItemType>(extension->Type);
         if ((itemType != ItemType::Armor) && (itemType != ItemType::Weapon) && (itemType != ItemType::Jewelry)) return true;
 
@@ -375,9 +353,7 @@ namespace Gothic_II_Addon
 
         auto addStat = [&](const int statId, const int statBonus)
         {
-            // Direct intdata write - the same proven pattern StExt_UpdatePcStats
-            // uses. SetValue() was silently not landing in the script array.
-            statsArray->intdata[statId] = statsArray->intdata[statId] + statBonus;
+            statsArray->SetValue(statsArray->intdata[statId] + statBonus, statId);
             parser->CallFunc(HandlePcStatChangeFunc, statId, statBonus);
         };
 
@@ -413,8 +389,7 @@ namespace Gothic_II_Addon
 
         auto removeStat = [&](const int statId, const int statBonus)
         {
-            // Direct intdata write - same rationale as addStat above.
-            statsArray->intdata[statId] = ValidateValueMin(statsArray->intdata[statId] - statBonus, 0);
+            statsArray->SetValue(ValidateValueMin(statsArray->intdata[statId] - statBonus, 0), statId);
             parser->CallFunc(HandlePcStatChangeFunc, statId, -statBonus);
         };
 
