@@ -2,6 +2,13 @@
 
 namespace Gothic_II_Addon
 {
+	// Base-game oCItem weapon-type flags (item->flags bits).
+	const int ITEM_FLAG_DAG     = 1 << 13;   // 8192   dagger / light blade
+	const int ITEM_FLAG_SWD     = 1 << 14;   // 16384  1h sword
+	const int ITEM_FLAG_AXE     = 1 << 15;   // 32768  1h axe
+	const int ITEM_FLAG_2HD_SWD = 1 << 16;   // 65536  2h sword
+	const int ITEM_FLAG_2HD_AXE = 1 << 17;   // 131072 2h axe
+
 	const int SPELLEFFECT_STORE_TIME = 3600;
 
 	struct DamageMeta
@@ -1022,6 +1029,7 @@ namespace Gothic_II_Addon
 		}
 
 		// Call script damage pre-process
+		const int realBeforeBegin = damageMeta.DamageInfo.RealDamage;
 		if (damageMeta.Attacker)
 		{
 			parser->CallFunc(OnDamageBeginFunc);
@@ -1033,13 +1041,77 @@ namespace Gothic_II_Addon
 			}
 		}
 
+		// Weapon-class per-type bonuses -> MAIN HIT, applied HERE in the DLL.
+		// The script (StExt_Hero_BeforeOffenceHandler) cannot reliably read
+		// StExt_PcStats[311+] under zParserExtender - it reads 0 while the engine
+		// holds the correct value - so the sword/axe/light-blade flat+% bonuses
+		// are applied natively where the read is trustworthy. Flat first, then
+		// permille (cap 150) of the boosted value, mirroring the old script math.
+		// Feeds RealDamage; the writeback below scales the raw channels to match.
+		if (damageMeta.Attacker && damageMeta.Attacker->IsSelfPlayer()
+			&& damageMeta.Weapon && (damageMeta.DamageInfo.DamageType & StExt_DamageType_Melee))
+		{
+			static zCPar_Symbol* pcStatsSym = parser->GetSymbol("StExt_PcStats");
+			if (pcStatsSym && pcStatsSym->intdata && (int)pcStatsSym->ele > 324)
+			{
+				const int wf = damageMeta.Weapon->flags;
+				int flat = 0, perc = 0;
+				if (wf & (ITEM_FLAG_SWD | ITEM_FLAG_2HD_SWD))      { flat = pcStatsSym->intdata[319]; perc = pcStatsSym->intdata[320]; }
+				else if (wf & (ITEM_FLAG_AXE | ITEM_FLAG_2HD_AXE)) { flat = pcStatsSym->intdata[321]; perc = pcStatsSym->intdata[322]; }
+				else if (wf & ITEM_FLAG_DAG)                       { flat = pcStatsSym->intdata[323]; perc = pcStatsSym->intdata[324]; }
+
+				if (flat != 0 || perc != 0)
+				{
+					int rd = damageMeta.DamageInfo.RealDamage + flat;
+					if (perc < 0) perc = 0; else if (perc > 150) perc = 150;
+					rd += (int)((long long)rd * perc / 1000);
+					damageMeta.DamageInfo.RealDamage = rd < 0 ? 0 : rd;
+				}
+			}
+		}
+
+		// Land Before-handler RealDamage edits on the MAIN hit. The original
+		// handler reads desc (not DamageInfo), and UpdateDamageInfo below
+		// overwrites RealDamage back from desc - so EVERY script edit to
+		// DamageInfo.RealDamage in a Before handler was silently discarded.
+		// This revives: hero OFFENCE bonuses (weapon-class jewelry, Zar embers)
+		// AND hero DEFENCE modifiers (Pancerz Dusz, legendary armor Zelazna
+		// Wola / Tarcza Ducha, jewelry Zelazna Skora, Zar embers fragility).
+		// Scale the raw damage channels by the intended ratio (both directions);
+		// full mitigation zeroes the hit. Gated to hero-involved hits only, so
+		// NPC-vs-NPC damage is untouched. Never underflows (scale, not subtract).
+		if (realBeforeBegin > 0 && damageMeta.DamageInfo.RealDamage != realBeforeBegin
+			&& ((damageMeta.Attacker && damageMeta.Attacker->IsSelfPlayer()) || this->IsSelfPlayer())
+			&& IsDamageDescriptorSane(desc))
+		{
+			const int realWanted = damageMeta.DamageInfo.RealDamage;
+			if (realWanted <= 0)
+			{
+				for (int i = 0; i < oEDamageIndex_MAX; ++i) desc.aryDamage[i] = 0UL;
+			}
+			else
+			{
+				const float mainRatio = (float)realWanted / (float)realBeforeBegin;
+				for (int i = 0; i < oEDamageIndex_MAX; ++i)
+					desc.aryDamage[i] = (unsigned long)((float)desc.aryDamage[i] * mainRatio);
+			}
+		}
+
 		// Original damage handler
 		DEBUG_MSG_DAM("OnDamage", "ENTER.", desc.pNpcAttacker, this);
 
+		// Real parry detection: the engine decides the parade INSIDE the
+		// original OnDamage and sets defender->didParade. Consume stale
+		// state before the call, check right after - this is the only spot
+		// where the flag is guaranteed fresh (the AI clears it later in
+		// ProcessNpc, which is why the per-frame hook never saw it).
+		const bool watchParade = this->IsSelfPlayer() && StExt_OnPlayerParadeSuccessFunc != Invalid;
+		if (watchParade) this->didParade = 0;
+
 		bool descStillSane = false;
-		try 
-		{ 
-			THISCALL(Hook_oCNpc_OnDamage)(desc); 
+		try
+		{
+			THISCALL(Hook_oCNpc_OnDamage)(desc);
 			descStillSane = IsDamageDescriptorSane(desc);
 		}
 		catch (const std::exception& e)
@@ -1062,6 +1134,11 @@ namespace Gothic_II_Addon
 			if (descStillSane) desc.pNpcAttacker = Null;
 		}
 		if (descStillSane && desc.pNpcAttacker && !IsNpcPointerValid(desc.pNpcAttacker)) desc.pNpcAttacker = Null;
+
+		// Freshly set inside the original OnDamage = the player just parried
+		// this very hit. Notify scripts (perfect vs held-block resolved there).
+		if (watchParade && this->didParade)
+			parser->CallFunc(StExt_OnPlayerParadeSuccessFunc);
 
 		UpdateDamageInfo(damageMeta.DamageInfo, desc);
 		SetScriptDamageActors(damageMeta.Attacker, damageMeta.Target, damageMeta.Weapon);

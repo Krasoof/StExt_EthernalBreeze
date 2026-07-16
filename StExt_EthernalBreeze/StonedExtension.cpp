@@ -579,6 +579,20 @@ namespace Gothic_II_Addon
         return True;
     }
 
+    // Reliable read of StExt_PcStats[idx] from the engine side. The script
+    // cannot read StExt_PcStats[311+] under zParserExtender (it reads 0 while
+    // the engine holds the correct value), so all new-stat reads route through
+    // this getter, whose return travels via the normal parser stack.
+    int __cdecl StExt_GetPcStat()
+    {
+        int idx = 0;
+        parser->GetParameter(idx);
+        zCPar_Symbol* sym = parser->GetSymbol("StExt_PcStats");
+        const int val = (sym && sym->intdata && idx >= 0 && (int)sym->ele > idx) ? sym->intdata[idx] : 0;
+        parser->SetReturn(val);
+        return True;
+    }
+
     int __cdecl StExt_UpdatePcStats()
     {
         zCPar_Symbol* StExt_PcStatsArray = parser->GetSymbol("StExt_PcStats");
@@ -1740,6 +1754,24 @@ namespace Gothic_II_Addon
         return True;
     }
 
+    // Like StExt_GenerateRandomItem but with a FORCED item rank (0..5) -
+    // powers the global 5% boss legendary drop. Skips the generated-item
+    // cache so the rank is guaranteed.
+    int __cdecl StExt_GenerateRankedItem()
+    {
+        int rank, power, itemClassId;
+        parser->GetParameter(rank);
+        parser->GetParameter(power);
+        parser->GetParameter(itemClassId);
+
+        if (power <= 0) power = 1;
+        StExt_ForceItemRank = ValidateValue(rank, 0, 5);
+        const int itemIndex = GenerateNewMagicItem(itemClassId, power);
+        StExt_ForceItemRank = -1;
+        parser->SetReturn(itemIndex);
+        return True;
+    }
+
     int __cdecl StExt_GetRegularItem()
     {
         int itemClassId, power;
@@ -1794,6 +1826,199 @@ namespace Gothic_II_Addon
         DEBUG_MSG_IF(!itm, "StExt_GetItemInstanceName - itm is null");
         
         DoReturnString();
+        return True;
+    }
+
+    // ********************** WEAPON SEAL FUNCS **********************
+    // A "seal" stores an offensive spell id on a weapon's item extension
+    // (reuses the reserved SpellId property). Scripts read it on hit and
+    // cast the spell scaled by element mastery. Only items that already
+    // have an item extension (magic/generated weapons) can be sealed.
+
+    int __cdecl StExt_GetItemSeal()
+    {
+        oCItem* itm = (oCItem*)parser->GetInstance();
+        ItemExtension* ext = itm ? GetItemExtension(itm) : Null;
+        parser->SetReturn(ext ? ext->GetProperty((int)ItemProperty::SpellId) : 0);
+        return True;
+    }
+
+    // Slot-based reader of element perks on EQUIPPED non-weapon items
+    // (armor, jewelry). which: 0 = spell id, 1 = perk power.
+    int __cdecl StExt_GetEquippedPerk()
+    {
+        int which;
+        parser->GetParameter(which);
+        int slot;
+        parser->GetParameter(slot);
+        oCNpc* npc = (oCNpc*)parser->GetInstance();
+        if (!npc || slot < 0)
+        {
+            parser->SetReturn(0);
+            return False;
+        }
+
+        int found = 0;
+        zCListSort<oCItem>* it = npc->inventory2.GetContents();
+        while (it)
+        {
+            oCItem* pItem = it->GetData();
+            if (pItem && pItem->HasFlag(ITM_FLAG_ACTIVE) && !HasFlag(pItem->mainflag, 2 | 4))
+            {
+                ItemExtension* ext = GetItemExtension(pItem);
+                if (ext)
+                {
+                    const int spell = ext->GetProperty((int)ItemProperty::SpellId);
+                    if (spell > 0)
+                    {
+                        if (found == slot)
+                        {
+                            parser->SetReturn(which ? ext->GetProperty((int)ItemProperty::SpellPower) : spell);
+                            return True;
+                        }
+                        ++found;
+                    }
+                }
+            }
+            it = it->GetNextInList();
+        }
+        parser->SetReturn(0);
+        return True;
+    }
+
+    // Item rank (0 common .. 5 legendary) - the legendary-bonus catalog rolls
+    // only on rank >= 5. Rank lives on the ItemExtension struct, not in props.
+    int __cdecl StExt_GetItemRank()
+    {
+        oCItem* itm = (oCItem*)parser->GetInstance();
+        ItemExtension* ext = itm ? GetItemExtension(itm) : Null;
+        parser->SetReturn(ext ? ext->Rank : 0);
+        return True;
+    }
+
+    // Legendary JEWELRY bonuses (catalog "Fala 1"): scans EQUIPPED non-weapon,
+    // non-armor items (rings/amulets/belts); every legendary one without a
+    // rolled bonus gets one (ids 41..48 in prop slot 28), then returns a
+    // bitmask of active jewelry bonuses (bit 0 = id 41, ...). One call per
+    // mod tick from scripts - keeps the hot damage hooks allocation-free.
+    int __cdecl StExt_ScanLegendJewelry()
+    {
+        oCNpc* npc = (oCNpc*)parser->GetInstance();
+        if (!npc)
+        {
+            parser->SetReturn(0);
+            return False;
+        }
+
+        int mask = 0;
+        zCListSort<oCItem>* it = npc->inventory2.GetContents();
+        while (it)
+        {
+            oCItem* pItem = it->GetData();
+            // mainflag 2|4 = melee/ranged weapons; 64 = armor (worn body)
+            if (pItem && pItem->HasFlag(ITM_FLAG_ACTIVE) && !HasFlag(pItem->mainflag, 2 | 4 | 64))
+            {
+                ItemExtension* ext = GetItemExtension(pItem);
+                if (ext && ext->Rank >= 5)
+                {
+                    int bonus = ext->GetProperty(28);
+                    if (bonus < 41 || bonus > 48)
+                    {
+                        bonus = 41 + (rand() % 8);
+                        ext->SetProperty(28, bonus);
+                    }
+                    mask |= (1 << (bonus - 41));
+                }
+            }
+            it = it->GetNextInList();
+        }
+        parser->SetReturn(mask);
+        return True;
+    }
+
+    int __cdecl StExt_GetItemProperty()
+    {
+        int index;
+        parser->GetParameter(index);
+        oCItem* itm = (oCItem*)parser->GetInstance();
+        ItemExtension* ext = itm ? GetItemExtension(itm) : Null;
+        if (!ext || index < 0 || index >= ItemExtension_Props_Max)
+        {
+            parser->SetReturn(0);
+            return False;
+        }
+        parser->SetReturn(ext->GetProperty(index));
+        return True;
+    }
+
+    int __cdecl StExt_SetItemProperty()
+    {
+        int value;
+        parser->GetParameter(value);
+        int index;
+        parser->GetParameter(index);
+        oCItem* itm = (oCItem*)parser->GetInstance();
+        ItemExtension* ext = itm ? GetItemExtension(itm) : Null;
+        if (!ext || index < 0 || index >= ItemExtension_Props_Max)
+        {
+            parser->SetReturn(False);
+            return False;
+        }
+        ext->SetProperty(index, value);
+        parser->SetReturn(True);
+        return True;
+    }
+
+    int __cdecl StExt_EnchantItemInPlace()
+    {
+        int power;
+        parser->GetParameter(power);
+        oCItem* itm = (oCItem*)parser->GetInstance();
+        parser->SetReturn(itm ? EnchantItemInPlace(itm, power) : Invalid);
+        return True;
+    }
+
+    int __cdecl StExt_RerollItemInPlace()
+    {
+        int power;
+        parser->GetParameter(power);
+        oCItem* itm = (oCItem*)parser->GetInstance();
+        parser->SetReturn(itm ? RerollItemInPlace(itm, power) : Invalid);
+        return True;
+    }
+
+    int __cdecl StExt_ItemHasExtension()
+    {
+        oCItem* itm = (oCItem*)parser->GetInstance();
+        parser->SetReturn((itm && GetItemExtension(itm)) ? True : False);
+        return True;
+    }
+
+    int __cdecl StExt_GetItemSealPower()
+    {
+        oCItem* itm = (oCItem*)parser->GetInstance();
+        ItemExtension* ext = itm ? GetItemExtension(itm) : Null;
+        parser->SetReturn(ext ? ext->GetProperty((int)ItemProperty::SpellPower) : 0);
+        return True;
+    }
+
+    int __cdecl StExt_SetItemSeal()
+    {
+        int power;
+        parser->GetParameter(power);
+        int spellId;
+        parser->GetParameter(spellId);
+        oCItem* itm = (oCItem*)parser->GetInstance();
+        ItemExtension* ext = itm ? GetItemExtension(itm) : Null;
+        if (!ext)
+        {
+            DEBUG_MSG("StExt_SetItemSeal - item has no extension (cannot seal)");
+            parser->SetReturn(False);
+            return False;
+        }
+        ext->SetProperty((int)ItemProperty::SpellId, spellId);
+        ext->SetProperty((int)ItemProperty::SpellPower, power);
+        parser->SetReturn(True);
         return True;
     }
 
@@ -2853,6 +3078,7 @@ namespace Gothic_II_Addon
         parser->DefineExternal("StExt_GetInstanceIdByName", StExt_GetInstanceIdByName, zPAR_TYPE_INT, zPAR_TYPE_STRING, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_GetAuraData", StExt_GetAuraData, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_UpdatePcStats", StExt_UpdatePcStats, zPAR_TYPE_VOID, zPAR_TYPE_VOID);
+        parser->DefineExternal("StExt_GetPcStat", StExt_GetPcStat, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_SpawnNpcWithFunc", StExt_SpawnNpcWithFunc, zPAR_TYPE_VOID, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_STRING, zPAR_TYPE_STRING, zPAR_TYPE_VOID);
 
         parser->DefineExternal("StExt_ForEachNpcInRadius", StExt_ForEachNpcInRadius, zPAR_TYPE_VOID, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_STRING, zPAR_TYPE_STRING, zPAR_TYPE_STRING, zPAR_TYPE_VOID);
@@ -2915,6 +3141,7 @@ namespace Gothic_II_Addon
         parser->DefineExternal("StExt_SetNpcVar", StExt_SetNpcVar, zPAR_TYPE_VOID, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_VOID);
 
         parser->DefineExternal("StExt_GenerateRandomItem", StExt_CreateRandomItem, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_VOID);
+        parser->DefineExternal("StExt_GenerateRankedItem", StExt_GenerateRankedItem, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_GetRegularItem", StExt_GetRegularItem, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_FindTargetInRadius", StExt_FindTargetInRadius, zPAR_TYPE_INT, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_STRING, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_UseEnchantedItem", StExt_UseEnchantedItem, zPAR_TYPE_VOID, zPAR_TYPE_VOID);
@@ -2974,6 +3201,18 @@ namespace Gothic_II_Addon
 
         parser->DefineExternal("StExt_SetRandomNpcData", StExt_SetRandomNpcData, zPAR_TYPE_VOID, zPAR_TYPE_STRING, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_GetRandomNpcData", StExt_GetRandomNpcData, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_VOID);
+
+        parser->DefineExternal("StExt_ItemHasExtension", StExt_ItemHasExtension, zPAR_TYPE_INT, zPAR_TYPE_INSTANCE, zPAR_TYPE_VOID);
+        parser->DefineExternal("StExt_GetItemProperty", StExt_GetItemProperty, zPAR_TYPE_INT, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_VOID);
+        parser->DefineExternal("StExt_GetItemRank", StExt_GetItemRank, zPAR_TYPE_INT, zPAR_TYPE_INSTANCE, zPAR_TYPE_VOID);
+        parser->DefineExternal("StExt_ScanLegendJewelry", StExt_ScanLegendJewelry, zPAR_TYPE_INT, zPAR_TYPE_INSTANCE, zPAR_TYPE_VOID);
+        parser->DefineExternal("StExt_GetEquippedPerk", StExt_GetEquippedPerk, zPAR_TYPE_INT, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_VOID);
+        parser->DefineExternal("StExt_EnchantItemInPlace", StExt_EnchantItemInPlace, zPAR_TYPE_INT, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_VOID);
+        parser->DefineExternal("StExt_RerollItemInPlace", StExt_RerollItemInPlace, zPAR_TYPE_INT, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_VOID);
+        parser->DefineExternal("StExt_SetItemProperty", StExt_SetItemProperty, zPAR_TYPE_INT, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_VOID);
+        parser->DefineExternal("StExt_GetItemSeal", StExt_GetItemSeal, zPAR_TYPE_INT, zPAR_TYPE_INSTANCE, zPAR_TYPE_VOID);
+        parser->DefineExternal("StExt_GetItemSealPower", StExt_GetItemSealPower, zPAR_TYPE_INT, zPAR_TYPE_INSTANCE, zPAR_TYPE_VOID);
+        parser->DefineExternal("StExt_SetItemSeal", StExt_SetItemSeal, zPAR_TYPE_INT, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_VOID);
     }
 
     //-----------------------------------------------------------------
