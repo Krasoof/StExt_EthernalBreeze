@@ -341,11 +341,17 @@ namespace Gothic_II_Addon
     {
         if (!item || !extension) { return false; }
 
-        // TEMP DEBUG (remove after diagnosis): dump every extension stat slot
-        // to the screen via script so we can see raw StatId/StatValue content.
+        // TEMP DEBUG (remove after diagnosis): dump extension stat slots, but
+        // ONLY for items carrying the new 311+ stats (isolates the test ring
+        // from the on-load flood of every equipped item).
         {
             static int dbgSlotFunc = parser->GetIndex("StExt_DebugItemStatSlot");
-            if (dbgSlotFunc != Invalid)
+            bool dbgHasNewStat = false;
+            for (int i = 0; i < ItemExtension_OwnStats_Max && !dbgHasNewStat; ++i)
+                if (extension->OwnStatId[i] >= 311) dbgHasNewStat = true;
+            for (int i = 0; i < ItemExtension_Stats_Max && !dbgHasNewStat; ++i)
+                if (extension->StatId[i] >= 311) dbgHasNewStat = true;
+            if (dbgSlotFunc != Invalid && dbgHasNewStat)
             {
                 parser->CallFunc(dbgSlotFunc, 19, 999, (int)extension->Type);
                 for (int i = 0; i < ItemExtension_OwnStats_Max; ++i)
