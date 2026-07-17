@@ -14,11 +14,6 @@ void oCNpc::DisplayCannotUse_StExt();
 
 void oCNpc::ChangeAttribute_StExt(int attribute, int value);
 
-// New damage engine (StExt_UseNewDamageEngine=1): re-prices a hit the engine already
-// applied - restores the pre-hit HP and re-applies RealDamage through the ENGINE's own
-// ChangeAttribute, so vanilla death/unconscious handling still runs. Defined in
-// Damage.cpp below the ChangeAttribute hook (needs its trampoline).
-void oCNpc::ApplyNewEngineDamage_StExt(int oldHp, int wantedDamage);
 
 //void oCNpc::Archive_StExt(zCArchiver& ar);
 
