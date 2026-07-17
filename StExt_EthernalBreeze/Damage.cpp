@@ -1,7 +1,48 @@
 ﻿#include <StonedExtension.h>
+#include <cstdio>
 
 namespace Gothic_II_Addon
 {
+	// TEMP DIAG (remove when the numbers are trusted): one line per hero hit into
+	// stext_damage.log - raw -> weapon-class bonus -> what we asked the engine for.
+	// 'applied' is filled in after the original ran, i.e. the number AFTER armour.
+	static int   StExtDiag_LastWanted = 0;
+	static int   StExtDiag_LastBefore = 0;
+	static bool  StExtDiag_Pending = false;
+
+	static void StExt_DamageDiagLog(int weaponFlags, int rawBefore, int flat, int perc, int wanted, int dmgType)
+	{
+		const char* kind = "other";
+		if (weaponFlags & ((1 << 14) | (1 << 16)))      kind = "SWORD";
+		else if (weaponFlags & ((1 << 15) | (1 << 17))) kind = "AXE";
+		else if (weaponFlags & (1 << 13))               kind = "DAGGER";
+
+		FILE* f = fopen("stext_damage.log", "a");
+		if (f)
+		{
+			fprintf(f, "HIT %-6s | raw=%-5d flat=+%-4d perc=+%d.%d%% | wanted=%-5d | dmgType=%d\n",
+				kind, rawBefore, flat, perc / 10, perc % 10, wanted, dmgType);
+			fclose(f);
+		}
+		StExtDiag_LastWanted = wanted;
+		StExtDiag_LastBefore = rawBefore;
+		StExtDiag_Pending = true;
+	}
+
+	// Called after the original OnDamage: how much HP the target actually lost.
+	static void StExt_DamageDiagApplied(int hpLost)
+	{
+		if (!StExtDiag_Pending) return;
+		StExtDiag_Pending = false;
+		FILE* f = fopen("stext_damage.log", "a");
+		if (f)
+		{
+			fprintf(f, "    -> applied(after armour)=%d  (raw was %d, we asked for %d)\n",
+				hpLost, StExtDiag_LastBefore, StExtDiag_LastWanted);
+			fclose(f);
+		}
+	}
+
 	// Base-game oCItem weapon-type flags (item->flags bits).
 	const int ITEM_FLAG_DAG     = 1 << 13;   // 8192   dagger / light blade
 	const int ITEM_FLAG_SWD     = 1 << 14;   // 16384  1h sword
@@ -1067,6 +1108,10 @@ namespace Gothic_II_Addon
 					rd += (int)((long long)rd * perc / 1000);
 					damageMeta.DamageInfo.RealDamage = rd < 0 ? 0 : rd;
 				}
+
+				// TEMP DIAG: the whole chain of one hero hit -> stext_damage.log
+				StExt_DamageDiagLog(wf, realBeforeBegin, flat, perc,
+					damageMeta.DamageInfo.RealDamage, damageMeta.DamageInfo.DamageType);
 			}
 		}
 
@@ -1098,6 +1143,7 @@ namespace Gothic_II_Addon
 		}
 
 		// Original damage handler
+		const int diagHpBefore = (this && IsNpcPointerValid(this)) ? this->attribute[NPC_ATR_HITPOINTS] : 0;
 		DEBUG_MSG_DAM("OnDamage", "ENTER.", desc.pNpcAttacker, this);
 
 		// Real parry detection: the engine decides the parade INSIDE the
@@ -1139,6 +1185,10 @@ namespace Gothic_II_Addon
 		// this very hit. Notify scripts (perfect vs held-block resolved there).
 		if (watchParade && this->didParade)
 			parser->CallFunc(StExt_OnPlayerParadeSuccessFunc);
+
+		// TEMP DIAG: what the target actually lost, i.e. the number after armour
+		if (this && IsNpcPointerValid(this))
+			StExt_DamageDiagApplied(diagHpBefore - this->attribute[NPC_ATR_HITPOINTS]);
 
 
 		UpdateDamageInfo(damageMeta.DamageInfo, desc);

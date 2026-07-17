@@ -280,8 +280,11 @@ namespace Gothic_II_Addon
         return ValidateValue(level, 1, ItemsGeneratorConfigs.ItemLevelMax);
     }
 
+    int StExt_ForceItemRank = -1;
+
     inline int RollItemRank(const int power)
     {
+        if (StExt_ForceItemRank >= 0) return StExt_ForceItemRank;
         if (power <= 0 || ItemsGeneratorConfigs.ItemRankMax <= 0) return 0;
 
         int minRank = 0;
@@ -532,6 +535,19 @@ namespace Gothic_II_Addon
         statsBuffer.QuickSort();
     }
 
+    // A rolled stat may only reach its full RollMaxCap in chapter 5: earlier chapters
+    // get chapter/5 of it, so a 1500-flat stat tops out at 300 in ch1, 600 in ch2 ...
+    // and 1500 only in ch5. Rolled once at drop time, so an item keeps whatever it was
+    // born with - the gate shapes progression, it does not nerf what you already own.
+    inline int StExt_GetChapterRollCap(const int rollMaxCap)
+    {
+        static zCPar_Symbol* kapitelSym = parser->GetSymbol("KAPITEL");
+        int chapter = 5;
+        if (kapitelSym) kapitelSym->GetValue(chapter, 0);
+        if (chapter < 1) chapter = 1; else if (chapter > 5) chapter = 5;
+        return static_cast<int>((static_cast<__int64>(rollMaxCap) * chapter) / 5);
+    }
+
     inline int RollItemStatValue(const ExtraStatData* statData, const int power, const int level, const int rank, const int quality, const ItemClassDescriptor* itemClassDescriptor)
     {
         if (!itemClassDescriptor || !statData) return 0;
@@ -543,7 +559,8 @@ namespace Gothic_II_Addon
         const float valueMin = statData->RollMinPower * power;
         const float valueMax = statData->RollMaxPower * power;
         const int result = static_cast<int>(((StExt_Rand::Range(valueMin, valueMax) * (1.0f + classBonus)) * classMult) * ItemsGeneratorConfigs.ItemStatPowerMult);
-        return ValidateValue(result, statData->RollMinCap, statData->RollMaxCap);
+        const int chapterCap = StExt_GetChapterRollCap(statData->RollMaxCap);
+        return ValidateValue(result, ValidateValueMax(statData->RollMinCap, chapterCap), chapterCap);
     }
     inline int RollItemStatValue(const int statDataId, const int power, const int level, const int rank, const int quality, const ItemClassDescriptor* itemClassDescriptor)
     {
