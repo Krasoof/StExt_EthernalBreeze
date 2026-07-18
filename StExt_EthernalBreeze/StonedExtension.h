@@ -192,6 +192,7 @@ namespace Gothic_II_Addon
 
 	// Custom subtitles (StExt_Say) - VoiceController.cpp
 	int __cdecl StExt_Say_Script();
+	int __cdecl StExt_IsDialogActive_Script();
 	void StExt_Subtitles_Loop();
 	void StExt_Subtitles_Clear();
 

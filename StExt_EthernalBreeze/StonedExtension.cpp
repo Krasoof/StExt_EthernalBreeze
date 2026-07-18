@@ -3092,6 +3092,7 @@ namespace Gothic_II_Addon
         parser->DefineExternal("StExt_GetPcStat", StExt_GetPcStat, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_Trace", StExt_Trace_Script, zPAR_TYPE_VOID, zPAR_TYPE_STRING, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_Say", StExt_Say_Script, zPAR_TYPE_VOID, zPAR_TYPE_STRING, zPAR_TYPE_STRING, zPAR_TYPE_VOID);
+        parser->DefineExternal("StExt_IsDialogActive", StExt_IsDialogActive_Script, zPAR_TYPE_INT, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_SpawnNpcWithFunc", StExt_SpawnNpcWithFunc, zPAR_TYPE_VOID, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_STRING, zPAR_TYPE_STRING, zPAR_TYPE_VOID);
 
         parser->DefineExternal("StExt_ForEachNpcInRadius", StExt_ForEachNpcInRadius, zPAR_TYPE_VOID, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_STRING, zPAR_TYPE_STRING, zPAR_TYPE_STRING, zPAR_TYPE_VOID);

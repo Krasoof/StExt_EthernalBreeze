@@ -331,6 +331,16 @@ namespace Gothic_II_Addon
 
 	void StExt_Subtitles_Clear() { }
 
+	// Daedalus: func int StExt_IsDialogActive()
+	// Czy sesja dialogowa (InfoManager) nadal trwa. Potrzebne, bo linie Say
+	// graja teraz natywnie SEKUNDAMI - akcje "po dialogu" (np. teleport na
+	// arene) musza czekac na realne zamkniecie, nie na sztywna liczbe klatek.
+	int __cdecl StExt_IsDialogActive_Script()
+	{
+		parser->SetReturn(oCInformationManager::GetInformationManager().HasFinished() ? 0 : 1);
+		return True;
+	}
+
 	//-------------------------------------------------------------------
 	//						        Hooks
 	//-------------------------------------------------------------------
