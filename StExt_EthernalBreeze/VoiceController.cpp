@@ -229,66 +229,107 @@ namespace Gothic_II_Addon
 	//-------------------------------------------------------------------
 	//					   Custom subtitles (StExt_Say)
 	//-------------------------------------------------------------------
-	// Nasze dialogi z Autorun nie maja wpisow OU (Ou.bin nie jest przebudowany),
-	// wiec silnikowy AI_Output je ODRZUCA (EV_Output, oNpc.cpp:13941: LibValidateOU
-	// < 0 -> return, zero napisu). Ten system OMIJA OU: pokazuje "kwadrat z napisami"
-	// wprost przez zCView::DialogMessageCXY (ten sam widok, ktorego uzywa silnik),
-	// z kolejki, linia po linii. Dziala dla dowolnego NPC bez OU-toolchain.
-	struct StExtSubtitle { zSTRING speaker; zSTRING text; };
-	static std::vector<StExtSubtitle> StExt_SubQueue;
-	static float StExt_SubShownUntil = 0.0f;
-	static bool  StExt_SubActive = false;
+	// v2: StExt_Say NIE rysuje nic samo. Dopisuje wpis OU do silnikowej
+	// biblioteki (zCCSLib, ta sama ktora laduje Ou.bin) i wrzuca natywny
+	// oCMsgConversation(EV_OUTPUT) do kolejki NPC - czyli robi DOKLADNIE
+	// to co AI_Output (oGameExternal.cpp:3857). Efekt: silnikowy dymek
+	// dialogowy - przewijalny, zamykany z dialogiem, kolejkowany przez EM.
+	// (Shiva dziala, bo jej OU siedzi w VDF StonedWizzarda; my dorabiamy
+	// wpisy w runtime.) Nazwa OU = STEXT_SAY_<CRC32 tekstu> - stabilna
+	// miedzy sesjami: przyszly dubbing podpina sie samym WAV-em o tej
+	// nazwie, zero zmian w kodzie.
+	// UWAGA: zCCSLib::Add nie nadaje sie do rejestracji - engine robi
+	// Insert (append), a ValidateToken szuka BINARNIE po roleName; wpis
+	// musi wejsc przez ouList.InsertSort.
+
+	static StringMap<int> StExt_SayOURegistered;
+
+	static unsigned int StExt_SayCrc32(zSTRING s)
+	{
+		unsigned int crc = 0xFFFFFFFFu;
+		const char* p = s.ToChar();
+		for (int i = 0; i < s.Length(); ++i)
+		{
+			crc ^= (unsigned char)p[i];
+			for (int k = 0; k < 8; ++k)
+				crc = (crc >> 1) ^ (0xEDB88320u & (0u - (crc & 1u)));
+		}
+		return ~crc;
+	}
+
+	// Rejestruje (raz) wpis OU strukturalnie identyczny z tymi z Ou.bin:
+	// zCCSBlock(roleName = nazwa) -> zCCSAtomicBlock -> oCMsgConversation
+	// (subType 0, text, name = NAZWA.WAV). Zwraca nazwe OU lub pusty string.
+	static zSTRING StExt_EnsureSayOU(const zSTRING& text)
+	{
+		char buf[24];
+		sprintf(buf, "STEXT_SAY_%08X", StExt_SayCrc32(text));
+		zSTRING ouName = buf;
+
+		if (StExt_SayOURegistered.HasKey(ouName)) return ouName;
+
+		zCCSManager* csMan = ogame ? ogame->csMan : Null;
+		if (!csMan || !csMan->library)
+		{
+			StExt_Trace("StExt_Say: brak csMan/library!");
+			return zSTRING("");
+		}
+
+		// biblioteka OU laduje sie leniwie - wymus zaladowanie przed insertem
+		csMan->LibForceToLoad();
+		if (!csMan->library->IsLoaded())
+		{
+			StExt_Trace("StExt_Say: biblioteka OU niezaladowana!");
+			return zSTRING("");
+		}
+
+		oCMsgConversation* msg = new oCMsgConversation(oCMsgConversation::EV_PLAYANISOUND, ouName + zSTRING(".WAV"));
+		msg->text = text;
+		msg->AddRef();	// wlasnosc bloku (Play robi CreateCopy, szablon zyje cala sesje)
+
+		zCCSAtomicBlock* atomic = new zCCSAtomicBlock();
+		atomic->command = msg;
+
+		zCCSBlock* blk = new zCCSBlock();
+		blk->roleName = ouName;	// roleName == blockName: klucz sortowania i wyszukiwania w ouList
+		blk->blocks.InsertEnd(zCCSBlockPosition(0.0f, atomic));
+		blk->AddRef();
+
+		csMan->library->ouList.InsertSort(blk);
+		StExt_SayOURegistered.Insert(ouName, 1);
+		StExt_Trace(zSTRING("StExt_Say OU zarejestrowane: ") + ouName);
+		return ouName;
+	}
 
 	// Daedalus: func void StExt_Say(var string speaker, var string text)
+	// speaker zostaje w API dla zgodnosci - imie mowiacego pokazuje silnik.
 	int __cdecl StExt_Say_Script()
 	{
 		zSTRING text;    parser->GetParameter(text);		// ostatni param zdejmowany pierwszy
 		zSTRING speaker; parser->GetParameter(speaker);
-		StExtSubtitle s; s.speaker = speaker; s.text = text;
-		StExt_SubQueue.push_back(s);
-		StExt_Trace(zSTRING("StExt_Say push [") + speaker + "]: " + text);
+
+		oCNpc* npc = oCInformationManager::GetInformationManager().Npc;
+		if (!npc || text.IsEmpty())
+		{
+			StExt_Trace(zSTRING("StExt_Say: brak NPC dialogu - pomijam linie: ") + text);
+			return True;
+		}
+
+		zSTRING ouName = StExt_EnsureSayOU(text);
+		if (ouName.IsEmpty()) return True;
+
+		oCMsgConversation* convMsg = new oCMsgConversation(oCMsgConversation::EV_OUTPUT, ouName);
+		convMsg->target = player;
+		npc->GetEM(FALSE)->OnMessage(convMsg, npc);
+		StExt_Trace(zSTRING("StExt_Say -> EV_OUTPUT [") + ouName + "]: " + text);
 		return True;
 	}
 
-	void StExt_Subtitles_Loop()
-	{
-		if (!ogame || !ztimer) return;
-		const float now = ztimer->totalTimeFloat / 1000.0f;
-		if (StExt_SubActive && now < StExt_SubShownUntil) return;	// biezaca linia jeszcze widoczna
-		if (StExt_SubQueue.empty()) { StExt_SubActive = false; return; }
+	// v2: rendering przejal silnik (EV_OUTPUT) - petla i czyszczenie zostaja
+	// jako puste stuby, bo woła je Plugin.cpp/naglowek.
+	void StExt_Subtitles_Loop() { }
 
-		// Silnik NIE rysuje dymkow przez globalny 'screen' - okno dialogowe to
-		// dedykowany zCView: ogame->array_view[GAME_VIEW_CONVERSATION] (tak robi
-		// oCNpc::EV_PlaySound, oNpc.cpp:14184-14195), a czas -1.0f kaze silnikowi
-		// policzyc go z dlugosci tekstu (s_fViewTimePerChar). Poprzednia wersja
-		// pisala w 'screen' z czasem w SEKUNDACH - dymek nie istnial.
-		zCView* view = ogame->array_view[oCGame::GAME_VIEW_CONVERSATION];
-		if (!view)
-		{
-			StExt_Trace("StExt_Say: brak view GAME_VIEW_CONVERSATION!");
-			StExt_SubQueue.clear();
-			StExt_SubActive = false;
-			return;
-		}
-
-		StExtSubtitle s = StExt_SubQueue.front();
-		StExt_SubQueue.erase(StExt_SubQueue.begin());
-
-		float dur = s.text.Length() * 0.055f;	// pacing NASZEJ kolejki (sekundy)
-		if (dur < 2.0f) dur = 2.0f;
-		zCOLOR col = zCOLOR(255, 255, 255, 255);
-		view->DialogMessageCXY(s.speaker, s.text + zSTRING("\n"), -1.0f, col);
-		StExt_Trace(zSTRING("StExt_Say render [") + s.speaker + "]: " + s.text);
-
-		StExt_SubShownUntil = now + dur;
-		StExt_SubActive = true;
-	}
-
-	void StExt_Subtitles_Clear()
-	{
-		StExt_SubQueue.clear();
-		StExt_SubActive = false;
-	}
+	void StExt_Subtitles_Clear() { }
 
 	//-------------------------------------------------------------------
 	//						        Hooks
