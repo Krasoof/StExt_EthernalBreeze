@@ -1,6 +1,7 @@
 #pragma once
 #include <UnionAfx.h>
 #include <limits>
+#include <cstdio>
 
 namespace Gothic_II_Addon
 {
@@ -10,6 +11,19 @@ namespace Gothic_II_Addon
 
 	template <typename T>
 	inline constexpr T ValidateValue(const T& val, const T& min_val, const T& max_val) { return (val < min_val) ? min_val : (val > max_val) ? max_val : val; }
+
+	// TEMP DIAG (crash hunt): trace to stext_trace.log, opened/closed per line so
+	// the last write ALWAYS reaches disk even when the process dies mid-frame.
+	// That is the whole point: the final line in the file names the step that
+	// crashed. Every instrumented step logs ">>" on entry and "<<" on exit -
+	// a ">>" with no matching "<<" is the murder scene.
+	// DEBUG_MSG is useless here: it is a no-op in Release.
+	inline void StExt_Trace(const char* msg)
+	{
+		FILE* f = fopen("stext_trace.log", "a");
+		if (f) { fputs(msg, f); fputc('\n', f); fclose(f); }
+	}
+	inline void StExt_Trace(const zSTRING& msg) { StExt_Trace(msg.ToChar()); }
 
 	template <typename T>
 	inline constexpr T ValidateValueMin(const T& val, const T& min_val) { return (val < min_val) ? min_val : val; }

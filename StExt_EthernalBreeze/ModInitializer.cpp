@@ -36,6 +36,7 @@ namespace Gothic_II_Addon
 	int IsExtraDamageProhibitedFunc = Invalid;
 	int StExt_CheckConditionStatFunc = Invalid;
 	int StExt_OnAiStateFunc = Invalid;
+	int StExt_OnPlayerParadeSuccessFunc = Invalid;
 	int StExt_ApplyPotionEffectFunc = Invalid;
 	int StExt_ApplyPotionPermEffectFunc = Invalid;
 	int StExt_GamePausedFunc = Invalid;
@@ -724,6 +725,9 @@ namespace Gothic_II_Addon
 
 		StExt_OnAiStateFunc = parser->GetIndex("StExt_OnAiState");
 		DEBUG_MSG_IF(StExt_OnAiStateFunc == Invalid, "StExt_OnAiStateFunc is null!");
+
+		StExt_OnPlayerParadeSuccessFunc = parser->GetIndex("StExt_OnPlayerParadeSuccess");
+		DEBUG_MSG_IF(StExt_OnPlayerParadeSuccessFunc == Invalid, "StExt_OnPlayerParadeSuccessFunc is null!");
 
 		StExt_ApplyPotionEffectFunc = parser->GetIndex("StExt_ApplyPotionEffect");
 		DEBUG_MSG_IF(StExt_ApplyPotionEffectFunc == Invalid, "StExt_ApplyPotionEffectFunc is null!");

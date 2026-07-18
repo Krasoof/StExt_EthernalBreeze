@@ -148,6 +148,8 @@ namespace Gothic_II_Addon
     HOOK Hook_oCNpc_UnequipItem PATCH(&oCNpc::UnequipItem, &oCNpc::UnequipItem_StExt);
     void oCNpc::UnequipItem_StExt(oCItem* item)
     {
+        // TEMP DIAG: druga sciezka zdejmowania (crash przy looting zalozonej broni).
+        StExt_Trace(zSTRING(">> UnequipItem inst='") + GetItemInstanceName(item) + "'");
         if (item && IsAdditionalArmorItem(item) && item->HasFlag(ITM_FLAG_ACTIVE))
         {
             item->AddRef();
@@ -155,9 +157,11 @@ namespace Gothic_II_Addon
             UnequipAdditionalArmorItem(item->wear);
             RemoveAdditionalArmorItemFromSlot(item);
             item->Release();
+            StExt_Trace("<< UnequipItem OK (addArmor)");
             return;
-        }        
+        }
         THISCALL(Hook_oCNpc_UnequipItem)(item);
+        StExt_Trace("<< UnequipItem OK");
     }
 
     HOOK Hook_oCNpc_EquipArmor PATCH(&oCNpc::EquipArmor, &oCNpc::EquipArmor_StExt);

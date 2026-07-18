@@ -77,6 +77,7 @@ namespace Gothic_II_Addon
 	extern int UpdateUiStatusFunc;
 	extern int StExt_CheckConditionStatFunc;
 	extern int StExt_OnAiStateFunc;
+	extern int StExt_OnPlayerParadeSuccessFunc;
 	extern int StExt_ApplyPotionEffectFunc;
 	extern int StExt_ApplyPotionPermEffectFunc;
 	extern int StExt_GamePausedFunc;
@@ -188,6 +189,11 @@ namespace Gothic_II_Addon
 	extern void UpdateNpcAbilities();
 
 	bool InitVoiceController();
+
+	// Custom subtitles (StExt_Say) - VoiceController.cpp
+	int __cdecl StExt_Say_Script();
+	void StExt_Subtitles_Loop();
+	void StExt_Subtitles_Clear();
 
 	void* AllocateDynamicObject(size_t size);
 	bool FreeDynamicObject(void* ptr);

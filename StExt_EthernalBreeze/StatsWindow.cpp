@@ -1386,22 +1386,80 @@ namespace Gothic_II_Addon
 		GeneralTabPanel->Init();
 	}
 
+	void StatsWindow_OnProfesionPanelUpdate(BaseUiElement* panel)
+	{
+		if (!panel || !Instance) return;
+
+		// Throttled rebuild (same cadence as the Bonus tab) so the tab reflects
+		// live state (joining the order, infusing souls, ...) instead of the
+		// snapshot taken when the menu framework first initialized at boot.
+		static int updateCounter = 0;
+		if (++updateCounter <= 25) return;
+		updateCounter = 0;
+
+		MenuScrollPanel* container = static_cast<MenuScrollPanel*>(panel);
+		if (!container) return;
+
+		int buildFuncIndex = parser->GetIndex("StExt_BuildProfessionTab");
+		if (buildFuncIndex >= 0) parser->CallFunc(buildFuncIndex);
+
+		zCPar_Symbol* linesSym = parser->GetSymbol("StExt_Str_ProfessionTab");
+		if (!linesSym) return;
+
+		int scrollOffset, scrollOffsetBefore;
+		container->GetScrollOffset(scrollOffset, scrollOffsetBefore);
+		container->ClearItems();
+
+		float yOffset = 0.02f;
+		const int maxLines = linesSym->ele;
+		for (int i = 0; i < maxLines; ++i)
+		{
+			zSTRING line = linesSym->stringdata[i];
+			if (line.Length() == 0) continue;
+
+			const float posY = yOffset;
+			MenuItem* contentItem = new MenuItem();
+			contentItem->OnInit = [i, posY, line](BaseUiElement* item)
+			{
+				item->Name = "ProfesionTabPanel_Line_" + Z(i);
+				item->SizeX = 0.98f;
+				item->SizeY = 0.035f;
+				item->PosX = 0.02f;
+				item->PosY = posY;
+
+				if (auto* itm = static_cast<MenuItem*>(item))
+				{
+					itm->Text = line;
+					// match the other tabs' content font (default font_screensmall
+					// looked completely off in this tab); first line is the header
+					itm->Font = (i == 0) ? MenuFont_Header : MenuFont_Sys_Default;
+					itm->BehaviorFlags = UiElementBehaviorFlags::Hoverable | UiElementBehaviorFlags::Interactable;
+					itm->HorizontalAlign = UiContentAlignEnum::Begin;
+					itm->VerticalAlign = UiContentAlignEnum::Center;
+				}
+			};
+			container->AddItem(contentItem);
+			yOffset += 0.045f;
+		}
+
+		container->Init();
+		container->SetScrollOffset(scrollOffset, Invalid);
+	}
+
 	void StatsWindow::InitProfesionTab()
 	{
 		ProfesionTabPanel = new MenuScrollPanel();
 		ProfesionTabPanel->OnInit = [](BaseUiElement* item)
 		{
-			item->Name = "GeneralTabPanel";
+			item->Name = "ProfesionTabPanel";
 			item->SizeX = 0.98f;
 			item->SizeY = 0.88f;
 			item->PosX = 0.01f;
 			item->PosY = 0.11f;
 			item->BgTexture = UiElement_PanelNoBorderTexture;
+			item->OnUpdate = StatsWindow_OnProfesionPanelUpdate;
 		};
 		AddItem(ProfesionTabPanel);
-
-		// ToDo
-
 		ProfesionTabPanel->Init();
 	}
 
@@ -2121,8 +2179,15 @@ namespace Gothic_II_Addon
 
 			if (!masteryData.IsCorruptionTouch)
 			{
+				zCPar_Symbol* perkNamesSym = parser->GetSymbol(masteryData.PerkNameSymbol);
 				for (int perkId = 0; perkId < masteryData.PerksCount; ++perkId)
 				{
+					// Sloty spellblade (16-19) istnieja tylko w drzewkach zywiolow;
+					// pozostale drzewka maja tam puste nazwy - nie renderuj pustych
+					// wierszy.
+					if (perkNamesSym && perkId < (int)perkNamesSym->ele && perkNamesSym->stringdata[perkId].IsEmpty())
+						continue;
+
 					SkillPanelArgs skillPanelArgs = SkillPanelArgs();
 					BuildSkillPostfixName(namePostfix, masteryData.MasteryId, perkId, masteryData.IsCorruption, masteryData.IsGeneric, index);
 

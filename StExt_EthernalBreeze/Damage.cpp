@@ -43,6 +43,17 @@ namespace Gothic_II_Addon
 		}
 	}
 
+	// TEMP DIAG: every hit that lands on the HERO -> stext_combat.log.
+	// Written for the "boss cannot finish me off, I sit at 1 HP" report. The
+	// interesting column is ATK: damage arriving with attacker=NONE goes down
+	// the DontKill fall-through, which treats every peaceful human - the hero
+	// included - as protected and clamps the blow to leave exactly 1 HP.
+	static void StExt_CombatDiagLog(const zSTRING& line)
+	{
+		FILE* f = fopen("stext_combat.log", "a");
+		if (f) { fputs(line.ToChar(), f); fputc('\n', f); fclose(f); }
+	}
+
 	// Base-game oCItem weapon-type flags (item->flags bits).
 	const int ITEM_FLAG_DAG     = 1 << 13;   // 8192   dagger / light blade
 	const int ITEM_FLAG_SWD     = 1 << 14;   // 16384  1h sword
@@ -69,6 +80,11 @@ namespace Gothic_II_Addon
 		bool TargetIsImmortal;
 		bool SpellFxInDict;
 
+		// Pierce amounts for THIS packet, carried from ExtraDamageInfo via
+		// DamageExtraParams (side-band DoExtraDamage -> PushDamageMeta) and
+		// consumed post-protection in ProcessExtraDamage.
+		int PierceDamage[8];
+
 		DamageInfo DamageInfo;
 	};
 
@@ -88,6 +104,7 @@ namespace Gothic_II_Addon
 		bool HasPendingExtraParams;
 		int DamageType;
 		int DamageFlags;
+		int PierceDamage[8];
 	};
 
 	struct PendingDamage
@@ -567,6 +584,8 @@ namespace Gothic_II_Addon
 		{
 			damageMeta.DamageInfo.DamageType |= DamageExtraParams.DamageType;
 			damageMeta.DamageInfo.DamageFlags |= DamageExtraParams.DamageFlags;
+			memcpy(damageMeta.PierceDamage, DamageExtraParams.PierceDamage, sizeof(damageMeta.PierceDamage));
+			memset(DamageExtraParams.PierceDamage, 0, sizeof(DamageExtraParams.PierceDamage));
 			DamageExtraParams.HasPendingExtraParams = false;
 		}
 
@@ -626,7 +645,7 @@ namespace Gothic_II_Addon
 	inline void ClearDamageMeta()
 	{
 		DEBUG_MSG_IF(DamageMetaData.GetNum() > 0, "ClearDamageMeta: there is a damageMeta left in stack!");
-		DamageExtraParams.HasPendingExtraParams = false;
+		DamageExtraParams = ExtraDamageParams{};
 		DamageInfoMetaData.IsPending = false;
 		DamageMetaData.Clear();
 		PendingEffectDamageData.Clear();
@@ -709,6 +728,7 @@ namespace Gothic_II_Addon
 		for (int i = 0; i < oEDamageIndex_MAX; ++i)
 		{
 			totalDamage += damageStruct.Damage[i];
+			totalDamage += damageStruct.PierceDamage[i];	// hit czysto zywiolowy (tylko pierce) tez musi przejsc przez OnDamage
 			totalDotDamage += damageStruct.DotDamage[i];
 		}
 		hasDamage = (totalDamage > 0);
@@ -786,6 +806,7 @@ namespace Gothic_II_Addon
 			DamageExtraParams.HasPendingExtraParams = true;
 			DamageExtraParams.DamageType = extraDam.DamageType;
 			DamageExtraParams.DamageFlags = extraDam.DamageFlags;
+			memcpy(DamageExtraParams.PierceDamage, extraDam.PierceDamage, sizeof(DamageExtraParams.PierceDamage));
 			if (HasFlag(flags, (ulong)DamageDescFlag_DotDamage)) DamageExtraParams.DamageFlags |= StExt_DamageFlag_Dot;
 			if (HasFlag(flags, (ulong)DamageDescFlag_ReflectDamage)) DamageExtraParams.DamageFlags |= StExt_DamageFlag_Reflect;
 
@@ -909,6 +930,23 @@ namespace Gothic_II_Addon
 			dam = dam <= 0 ? 1 : dam;
 			damageReal += dam;
 			desc.aryDamageEffective[i] = static_cast<ulong>(dam);
+		}
+
+		// Pierce channels (element damage): applied with NO protection
+		// subtraction (user call 2026-07-18); immunity (protection < 0)
+		// still skips the channel entirely.
+		if (currentDamageMeta)
+		{
+			for (int i = 0; i < oEDamageIndex_MAX; ++i)
+			{
+				int pierce = currentDamageMeta->PierceDamage[i];
+				if (pierce <= 0) continue;
+				if (target->protection[i] < 0) continue;
+
+				damageTotal += pierce;
+				damageReal += pierce;
+				desc.aryDamageEffective[i] += static_cast<ulong>(pierce);
+			}
 		}
 
 		if (damageReal <= 0) damageReal = 1;
@@ -1320,13 +1358,31 @@ namespace Gothic_II_Addon
 
 			damage = value * (-1);
 			bool mustKill = false;
+			// TEMP DIAG state for the hero-combat log below.
+			const bool diagHero = this->IsSelfPlayer();
+			int diagDontKill = -1;		// -1 = guard not consulted
+			bool diagClamped = false;
 			if ((damage >= this->attribute[0]) && (this->attribute[0] > 1) && this->IsHuman())
 			{
 				int dontKill = *(int*)parser->CallFunc(dontKillcheckFuncIndex);
 				bool saveLife = HasFlag(currentDamageInfo.Flags, StExt_IncomingDamageFlag_Index_DontKill) || dontKill;
+				diagDontKill = dontKill;
+				diagClamped = saveLife;
 				if (saveLife)
 					value = -(this->attribute[0] - 1);
 				else mustKill = true;
+			}
+
+			if (diagHero)
+			{
+				zSTRING atkName = attaker ? SafeNpcName(attaker) : zSTRING("NONE(!)");
+				StExt_CombatDiagLog(zSTRING("HERO HIT | atk=") + atkName
+					+ " | dmg=" + zSTRING(damage)
+					+ " | hp=" + zSTRING(this->attribute[0]) + "/" + zSTRING(this->attribute[1])
+					+ " | dontKillGuard=" + zSTRING(diagDontKill)
+					+ (diagClamped ? " | CLAMPED->1HP (nie zginiesz)" : "")
+					+ " | dmgType=" + zSTRING(currentDamageInfo.DamageType)
+					+ " | flags=" + zSTRING(currentDamageInfo.Flags));
 			}
 
 			DEBUG_MSG_FUNC("ChangeAttribute_StExt", "Apply " + Z(damage) + " damage to '" + SafeNpcName(this) + "' ...");

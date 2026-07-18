@@ -593,6 +593,17 @@ namespace Gothic_II_Addon
         return True;
     }
 
+    // TEMP DIAG: script-side entry into the crash trace (stext_trace.log).
+    // Scripts had no way to log silently: ai_print* spams the screen and
+    // DEBUG_MSG is compiled out in Release. Every line is flushed immediately,
+    // so the last one written survives the process dying mid-frame.
+    int __cdecl StExt_Trace_Script()
+    {
+        zSTRING msg; parser->GetParameter(msg);
+        StExt_Trace(msg);
+        return True;
+    }
+
     int __cdecl StExt_UpdatePcStats()
     {
         zCPar_Symbol* StExt_PcStatsArray = parser->GetSymbol("StExt_PcStats");
@@ -3079,6 +3090,8 @@ namespace Gothic_II_Addon
         parser->DefineExternal("StExt_GetAuraData", StExt_GetAuraData, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_UpdatePcStats", StExt_UpdatePcStats, zPAR_TYPE_VOID, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_GetPcStat", StExt_GetPcStat, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_VOID);
+        parser->DefineExternal("StExt_Trace", StExt_Trace_Script, zPAR_TYPE_VOID, zPAR_TYPE_STRING, zPAR_TYPE_VOID);
+        parser->DefineExternal("StExt_Say", StExt_Say_Script, zPAR_TYPE_VOID, zPAR_TYPE_STRING, zPAR_TYPE_STRING, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_SpawnNpcWithFunc", StExt_SpawnNpcWithFunc, zPAR_TYPE_VOID, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_STRING, zPAR_TYPE_STRING, zPAR_TYPE_VOID);
 
         parser->DefineExternal("StExt_ForEachNpcInRadius", StExt_ForEachNpcInRadius, zPAR_TYPE_VOID, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_STRING, zPAR_TYPE_STRING, zPAR_TYPE_STRING, zPAR_TYPE_VOID);
@@ -3258,6 +3271,7 @@ namespace Gothic_II_Addon
             memset(&CurrentSpellInfo, 0, sizeof(CurrentSpellInfo));
             CurrentSpellInfo.SpellId = this->spellID;
             CurrentSpellInfo.SpellLevel = this->spellLevel;
+            CurrentSpellInfo.EngineManaInvested = this->manaInvested;
 
             parser->SetInstance(SpellInfoSymIndex, &CurrentSpellInfo);
             parser->CallFunc(StExt_OnSpellCastFunc);

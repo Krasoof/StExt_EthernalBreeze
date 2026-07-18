@@ -130,6 +130,11 @@ namespace Gothic_II_Addon
         int MaxTargets;
         int Radius;
         int IsProcessed;
+        // Pierce channels: applied AFTER protection subtraction (elemental
+        // damage pierces armor - user call 2026-07-18); immunity
+        // (protection < 0) is still respected. Layout mirror of Daedalus
+        // C_ExtraDamageInfo (Externals.d) - new fields go at the END only.
+        int PierceDamage[8];
     };
     
     struct ThrowItemDescriptor
@@ -169,5 +174,6 @@ namespace Gothic_II_Addon
     // Floating damage numbers (FloatingDamage.cpp)
     void StExt_SpawnFloatingDamage(oCNpc* target, int damage, bool isCrit);
     void StExt_FloatingDamage_Loop();
+    void StExt_DumpWeaponGlowPfx();
     void StExt_FloatingDamage_Clear();
 }

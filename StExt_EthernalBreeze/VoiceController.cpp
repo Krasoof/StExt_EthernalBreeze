@@ -1,5 +1,6 @@
 #include <UnionAfx.h>
 #include <StonedExtension.h>
+#include <vector>
 
 namespace Gothic_II_Addon
 {
@@ -223,6 +224,70 @@ namespace Gothic_II_Addon
 		ReleaseVoice();
 		CurrentSpeaker = Null;
 		CurrentHandle = 0;
+	}
+
+	//-------------------------------------------------------------------
+	//					   Custom subtitles (StExt_Say)
+	//-------------------------------------------------------------------
+	// Nasze dialogi z Autorun nie maja wpisow OU (Ou.bin nie jest przebudowany),
+	// wiec silnikowy AI_Output je ODRZUCA (EV_Output, oNpc.cpp:13941: LibValidateOU
+	// < 0 -> return, zero napisu). Ten system OMIJA OU: pokazuje "kwadrat z napisami"
+	// wprost przez zCView::DialogMessageCXY (ten sam widok, ktorego uzywa silnik),
+	// z kolejki, linia po linii. Dziala dla dowolnego NPC bez OU-toolchain.
+	struct StExtSubtitle { zSTRING speaker; zSTRING text; };
+	static std::vector<StExtSubtitle> StExt_SubQueue;
+	static float StExt_SubShownUntil = 0.0f;
+	static bool  StExt_SubActive = false;
+
+	// Daedalus: func void StExt_Say(var string speaker, var string text)
+	int __cdecl StExt_Say_Script()
+	{
+		zSTRING text;    parser->GetParameter(text);		// ostatni param zdejmowany pierwszy
+		zSTRING speaker; parser->GetParameter(speaker);
+		StExtSubtitle s; s.speaker = speaker; s.text = text;
+		StExt_SubQueue.push_back(s);
+		StExt_Trace(zSTRING("StExt_Say push [") + speaker + "]: " + text);
+		return True;
+	}
+
+	void StExt_Subtitles_Loop()
+	{
+		if (!ogame || !ztimer) return;
+		const float now = ztimer->totalTimeFloat / 1000.0f;
+		if (StExt_SubActive && now < StExt_SubShownUntil) return;	// biezaca linia jeszcze widoczna
+		if (StExt_SubQueue.empty()) { StExt_SubActive = false; return; }
+
+		// Silnik NIE rysuje dymkow przez globalny 'screen' - okno dialogowe to
+		// dedykowany zCView: ogame->array_view[GAME_VIEW_CONVERSATION] (tak robi
+		// oCNpc::EV_PlaySound, oNpc.cpp:14184-14195), a czas -1.0f kaze silnikowi
+		// policzyc go z dlugosci tekstu (s_fViewTimePerChar). Poprzednia wersja
+		// pisala w 'screen' z czasem w SEKUNDACH - dymek nie istnial.
+		zCView* view = ogame->array_view[oCGame::GAME_VIEW_CONVERSATION];
+		if (!view)
+		{
+			StExt_Trace("StExt_Say: brak view GAME_VIEW_CONVERSATION!");
+			StExt_SubQueue.clear();
+			StExt_SubActive = false;
+			return;
+		}
+
+		StExtSubtitle s = StExt_SubQueue.front();
+		StExt_SubQueue.erase(StExt_SubQueue.begin());
+
+		float dur = s.text.Length() * 0.055f;	// pacing NASZEJ kolejki (sekundy)
+		if (dur < 2.0f) dur = 2.0f;
+		zCOLOR col = zCOLOR(255, 255, 255, 255);
+		view->DialogMessageCXY(s.speaker, s.text + zSTRING("\n"), -1.0f, col);
+		StExt_Trace(zSTRING("StExt_Say render [") + s.speaker + "]: " + s.text);
+
+		StExt_SubShownUntil = now + dur;
+		StExt_SubActive = true;
+	}
+
+	void StExt_Subtitles_Clear()
+	{
+		StExt_SubQueue.clear();
+		StExt_SubActive = false;
 	}
 
 	//-------------------------------------------------------------------

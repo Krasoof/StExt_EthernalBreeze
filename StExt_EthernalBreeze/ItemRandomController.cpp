@@ -50,6 +50,56 @@ namespace Gothic_II_Addon
 		{ IsValid = ItemClassData != Null; }
 	};
 
+	// Random elemental perk for generated MAGIC weapons: with a script-tunable
+	// chance (const int StExt_WeaponElementRollChance) the weapon gets a random
+	// offensive spell stored as its element (same storage the weapon seals use,
+	// ItemProperty::SpellId/SpellPower). Scripts charge it with the H-skill and
+	// proc it passively; seals of the same element can upgrade its power.
+	static const char* WeaponElementSpellSymbols[] =
+	{
+		"SPL_FIREBOLT", "SPL_INSTANTFIREBALL", "SPL_CHARGEFIREBALL", "SPL_FIRESTORM",
+		"SPL_ICEBOLT", "SPL_ICELANCE",
+		"SPL_ZAP", "SPL_LIGHTNINGFLASH", "SPL_THUNDERBALL",
+		"SPL_WINDFIST", "SPL_WHIRLWIND",
+		"SPL_STONEFIRST",
+		"SPL_PALHOLYBOLT",
+		"SPL_DARKBALL",
+		"SPL_DEATHBOLT", "SPL_DEATHBALL"
+	};
+	static const unsigned int WeaponElementSpellsMax = sizeof(WeaponElementSpellSymbols) / sizeof(WeaponElementSpellSymbols[0]);
+
+	inline void RollItemElementPerk(ItemRandomRollDescriptor& desc)
+	{
+		if (!desc.IsMagic || !desc.ItemExtensionData || !desc.ItemClassData) return;
+
+		int chance = 20;
+		zCPar_Symbol* chanceSym = parser->GetSymbol("STEXT_WEAPONELEMENTROLLCHANCE");
+		if (chanceSym) chance = chanceSym->single_intdata;
+
+		int perkPower = desc.ItemPower;
+		if (desc.ItemClassData->Type != 2)
+		{
+			// armor / jewelry: element perk (aegis aura) is LEGENDARY-only
+			if (desc.ItemRank < 5) return;
+			chance = 100;
+			perkPower += perkPower / 2;
+		}
+		else
+		{
+			// weapons: epic doubles the chance, legendary always rolls one
+			if (desc.ItemRank >= 5)      { chance = 100; perkPower += perkPower / 2; }
+			else if (desc.ItemRank >= 4) { chance *= 2; perkPower += perkPower / 4; }
+		}
+
+		if (!StExt_Rand::Percent(chance)) return;
+
+		zCPar_Symbol* spellSym = parser->GetSymbol(WeaponElementSpellSymbols[StExt_Rand::Index(WeaponElementSpellsMax)]);
+		if (!spellSym) return;
+
+		desc.ItemExtensionData->SetProperty((int)ItemProperty::SpellId, spellSym->single_intdata);
+		desc.ItemExtensionData->SetProperty((int)ItemProperty::SpellPower, perkPower);
+	}
+
 	void InitializeRandomItemRoll(ItemRandomRollDescriptor& desc)
 	{
 		if (!desc.ItemClassData)
@@ -73,6 +123,7 @@ namespace Gothic_II_Addon
 		desc.ItemLevel = RollItemLevel(desc.ItemPower);
 		desc.ItemRank = desc.IsMagic ? RollItemRank(desc.ItemPower) : 0;
 		desc.ItemQuality = RollItemQuality(desc.ItemPower, desc.ItemRank);
+		RollItemElementPerk(desc);
 		desc.ItemSockets = desc.ItemClassData->SocketsAllowed ? RollItemMaxSockets(desc.ItemLevel, desc.ItemRank, desc.ItemQuality, 0, desc.ItemClassData) : 0;
 
 		desc.ItemExtraCondCount = desc.ItemClassData->ExtraConditionAllowed ? RollItemExtraConditionsCount(desc.ItemLevel, desc.ItemRank, desc.ItemQuality, desc.ItemClassData) : 0;
@@ -379,6 +430,32 @@ namespace Gothic_II_Addon
 			return Null;
 		}
 		RollItemBaseStats(rollDescriptor);
+		FinalizeRandomItemRoll(rollDescriptor);
+		return rollDescriptor.ItemExtensionData;
+	}
+
+	// Enchant-in-place: roll a full magic extension but bind it to the
+	// PLAYER'S actual item (same base stats, name and visuals) instead
+	// of a random prototype of the class.
+	ItemExtension* RollInPlaceMagicItem(oCItem* item, const int power)
+	{
+		if (!item) return Null;
+		ItemRandomRollDescriptor rollDescriptor = ItemRandomRollDescriptor(power, GetItemClassKey(item));
+		if (!rollDescriptor.IsValid) return Null;
+		rollDescriptor.IsMagic = true;
+		InitializeRandomItemRoll(rollDescriptor);
+		if (!rollDescriptor.IsValid)
+		{
+			SAFE_DELETE(rollDescriptor.ItemExtensionData);
+			return Null;
+		}
+
+		rollDescriptor.ItemBaseInstance = item->GetInstanceName();
+		rollDescriptor.ItemExtensionData->BaseInstanceName = rollDescriptor.ItemBaseInstance;
+		SetItemExtensionInitialProps(rollDescriptor.ItemExtensionData, item);
+
+		RollItemBaseStats(rollDescriptor);
+		RollItemMagic(rollDescriptor);
 		FinalizeRandomItemRoll(rollDescriptor);
 		return rollDescriptor.ItemExtensionData;
 	}

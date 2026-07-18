@@ -218,16 +218,131 @@ namespace Gothic_II_Addon
 		if (maxSockets > 0)
 			CreateContentLine(parser->GetSymbol("StExt_Str_ItemSockets")->stringdata + Z(usedSockets) + "/" + Z(maxSockets), ItemTextColor_Default_Faded);
 
+		// --- Legendary catalog bonus (prop 28): visible on the item card so
+		// the rolled power is inspectable and clearly saved with the item ---
+		{
+			const int lgb = itemExtensionUnsafe->GetProperty(28);
+			const char* lgbName = Null;
+			switch (lgb)
+			{
+				case 1:  lgbName = "Krwawy Osad: +25% obrazen ponizej 30% HP wroga"; break;
+				case 2:  lgbName = "Egzekutor: dobija wrogow ponizej 10% HP"; break;
+				case 3:  lgbName = "Kiel Rozkladu: zatruwa trafionych"; break;
+				case 4:  lgbName = "Ostrze Rzeznika: rozcina - krwawienie"; break;
+				case 5:  lgbName = "Piesc Tytana: +10% obrazen"; break;
+				case 6:  lgbName = "Glod Ostrza: 3% obrazen jako zycie"; break;
+				case 21: lgbName = "Zelazna Wola: -10% obrazen wrecz"; break;
+				case 22: lgbName = "Tarcza Ducha: -15% obrazen od magii"; break;
+				case 23: lgbName = "Plaszcz Cierni: odbija 10% obrazen"; break;
+				case 41: lgbName = "Piesn Krwi: 3% obrazen jako zycie"; break;
+				case 42: lgbName = "Kolia Egzekutora: +25% obrazen ponizej 25% HP wroga"; break;
+				case 43: lgbName = "Pierscien Cierni: odbija 15% obrazen wrecz"; break;
+				case 44: lgbName = "Sygnet Hazardzisty: losowo do +100% obrazen"; break;
+				case 45: lgbName = "Pierscien Pijawki: 2% obrazen jako mana"; break;
+				case 46: lgbName = "Wezel Czasu: 10% szansy na ogluszenie"; break;
+				case 47: lgbName = "Pas Berserkera: +20% obrazen ponizej 30% HP"; break;
+				case 48: lgbName = "Zelazna Skora: -10% obrazen wrecz"; break;
+			}
+			if (lgbName)
+			{
+				CreateContentSeparatorLine();
+				CreateContentLine(zSTRING("Moc legendarna - ") + lgbName, GetRankColor(5));
+			}
+		}
+
+		// --- StExt weapon element (perk) + seal: names + COMPUTED damage ---
+		// WEAPONS ONLY (mainflag 2|4): jewelry/armor also carry the old perk
+		// prop from the retired aura system, and rendering weapon-style
+		// "+X obrazen/cios / Atak H" on an amulet was pure nonsense.
+		if (DisplayItem && HasFlag(DisplayItem->mainflag, 2 | 4))
+		{
+			static const int ElFlag[8]   = { 16, 32, 64, 128, 256, 512, 1024, 2048 };
+			static const char* ElName[8] = { "Ogien", "Lod", "Blyskawice", "Wiatr", "Ziemia", "Swiatlo", "Mrok", "Smierc" };
+
+			const int perkSpell = itemExtensionUnsafe->GetProperty((int)ItemProperty::SpellId);
+			const int perkPower = itemExtensionUnsafe->GetProperty((int)ItemProperty::SpellPower);
+			const int sealSpell = itemExtensionUnsafe->GetProperty((int)ItemProperty::SpellCost);
+			const int sealPower = itemExtensionUnsafe->GetProperty((int)ItemProperty::SpellCharges);
+			const int sealLevel = itemExtensionUnsafe->GetProperty(26);
+
+			zCPar_Symbol* flagsSym = parser->GetSymbol("StExt_SpellDamageFlags");
+
+			int perkEl = -1, sealEl = -1;
+			if (flagsSym)
+			{
+				if (perkSpell > 0 && perkSpell < flagsSym->ele)
+					for (int e = 0; e < 8; e++) if (HasFlag(flagsSym->intdata[perkSpell], ElFlag[e])) { perkEl = e; break; }
+				if (sealSpell > 0 && sealSpell < flagsSym->ele)
+					for (int e = 0; e < 8; e++) if (HasFlag(flagsSym->intdata[sealSpell], ElFlag[e])) { sealEl = e; break; }
+			}
+
+			if (perkSpell > 0 || sealSpell > 0)
+				CreateContentSeparatorLine();
+
+			// Tooltip liczy DOKLADNIE te funkcje skryptowe co runtime
+			// (StExt_Tooltip_* -> wspolne rdzenie w ItemAbilitiesController.d).
+			// Koniec z recznymi lustrami wzorow w C++ - rozjezdzaly sie z gra
+			// ("dziwne liczby na broni": inne skalowanie masterii, inny interwal).
+			static const int fElementPerHit  = parser->GetIndex("StExt_Tooltip_ElementPerHit");
+			static const int fBurstPower     = parser->GetIndex("StExt_Tooltip_BurstPower");
+			static const int fSealInterval   = parser->GetIndex("StExt_Tooltip_SealProcInterval");
+			static const int fSealProcDamage = parser->GetIndex("StExt_Tooltip_SealProcDamage");
+			static const int fBleedTick      = parser->GetIndex("StExt_Tooltip_BleedTick");
+			static const int fPiercePermille = parser->GetIndex("StExt_Tooltip_PiercePermille");
+			const bool tooltipFuncsOk = (fElementPerHit != Invalid) && (fBurstPower != Invalid) && (fSealInterval != Invalid)
+				&& (fSealProcDamage != Invalid) && (fBleedTick != Invalid) && (fPiercePermille != Invalid);
+
+			const int weaponDmg = DisplayItem ? DisplayItem->damageTotal : 0;
+			const int weaponFlags = DisplayItem ? DisplayItem->flags : 0;
+			// przyblizenie WeaponSkillUsesMana dla focusowanego itemu (miecz
+			// magiczny/kostur nosi spell) - runtime liczy to doklaniej z instancji
+			const int usesMana = (DisplayItem && DisplayItem->spell > 0) ? 1 : 0;
+
+			if (perkSpell > 0 && perkEl >= 0 && tooltipFuncsOk)
+			{
+				const int flat  = *(int*)parser->CallFunc(fElementPerHit, perkSpell, perkPower, weaponDmg, usesMana);
+				const int burst = *(int*)parser->CallFunc(fBurstPower, perkSpell, perkPower, weaponDmg, weaponFlags, usesMana);
+				CreateContentLine(zSTRING("Zywiol: ") + ElName[perkEl], ItemTextColor_Green);
+				CreateContentLine(zSTRING("  +") + Z(flat) + " obrazen/cios  |  Atak H: " + Z(burst) + " obrazen", ItemTextColor_Green);
+			}
+
+			if (sealSpell >= 9000)
+			{
+				if (sealSpell == 9001 && tooltipFuncsOk)
+				{
+					const int dot = *(int*)parser->CallFunc(fBleedTick, sealPower, sealLevel);
+					CreateContentLine(zSTRING("Pieczec: Krwawienie [poz. ") + Z(sealLevel) + "]  |  +" + Z(dot) + " obrazen/s + % maxHP celu", ItemTextColor_Green);
+				}
+				else if (sealSpell == 9002 && tooltipFuncsOk)
+				{
+					const int permille = *(int*)parser->CallFunc(fPiercePermille, sealPower, sealLevel);
+					CreateContentLine(zSTRING("Pieczec: Przebicie [poz. ") + Z(sealLevel) + "]  |  " + Z(permille / 10) + "% ciosu ignoruje pancerz", ItemTextColor_Green);
+				}
+			}
+			else if (sealSpell > 0 && sealEl >= 0 && tooltipFuncsOk)
+			{
+				const int interval = *(int*)parser->CallFunc(fSealInterval, sealSpell, sealPower);
+				const int procDmg  = *(int*)parser->CallFunc(fSealProcDamage, sealSpell, sealPower, weaponDmg, weaponFlags, usesMana);
+				CreateContentLine(zSTRING("Pieczec: ") + ElName[sealEl] + " [poz. " + Z(sealLevel) + "]", ItemTextColor_Green);
+				CreateContentLine(zSTRING("  czar co ") + Z(interval) + " cios(y)  |  ~" + Z(procDmg) + " obrazen", ItemTextColor_Green);
+			}
+		}
+
 		// ToDo: organize other options...
 
-		if ((itemExtension->SpecialDamageMin + itemExtension->SpecialDamageMax) > 0)
+		// Special damage: WEAPONS only; special protection: ARMOR only.
+		// Jewelry used to render both green lines ("Specjalna Ochrona: Mrok"
+		// on a belt...) - legacy noise, gone per user call.
+		if ((itemExtension->SpecialDamageMin + itemExtension->SpecialDamageMax) > 0
+			&& DisplayItem && HasFlag(DisplayItem->mainflag, 2 | 4))
 		{
 			CreateContentSeparatorLine();
-			CreateContentLine(parser->GetSymbol("StExt_Str_ItemSpecialDamage")->stringdata + 
+			CreateContentLine(parser->GetSymbol("StExt_Str_ItemSpecialDamage")->stringdata +
 				Z(itemExtension->SpecialDamageMin) + " - " + Z(itemExtension->SpecialDamageMax) + " | " + GetExtraDamageTypeString(itemExtension->SpecialDamageTypes), ItemTextColor_Green);
 		}
 
-		if (itemExtension->SpecialProtection > 0)
+		if (itemExtension->SpecialProtection > 0
+			&& DisplayItem && HasFlag(DisplayItem->mainflag, 64))
 		{
 			CreateContentSeparatorLine();
 			CreateContentLine(parser->GetSymbol("StExt_Str_ItemSpecialProtection")->stringdata +

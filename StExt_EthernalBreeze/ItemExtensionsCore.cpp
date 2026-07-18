@@ -317,7 +317,14 @@ namespace Gothic_II_Addon
 
         if (extension->Cost > 0) item->value = extension->Cost;
         if (item->value <= 0) item->value = 1;
-        item->weight = (extension->ItemClassData->ModWeight && extension->Weight != Invalid) ? extension->Weight : item->weight;
+        // ItemClassData bywa NULL - gdy klasa itemu nie ma zarejestrowanego
+        // deskryptora (ItemExtension::Initialize ustawia go z GetItemClassDescriptor,
+        // ktore moze zwrocic NULL - patrz DEBUG_MSG "ItemClassData not found"). Autor
+        // guarduje to WSZEDZIE (UpgradeDamage/Change*/AddSockets: "if (!ItemClassData) return"),
+        // ale TU i w UpdatePrice przeoczyl. To byl crash: bron bossa trafiala na klase
+        // bez deskryptora, a InitByScript -> ApplyItemExtension derefowal NULL->ModWeight,
+        // gdy plecak gracza zaczytywal ja po podniesieniu. Fallback: wlasna waga itemu.
+        item->weight = (extension->ItemClassData && extension->ItemClassData->ModWeight && extension->Weight != Invalid) ? extension->Weight : item->weight;
 
         for (int i = 0; i < oEDamageIndex_MAX; ++i)
         {
@@ -753,15 +760,25 @@ namespace Gothic_II_Addon
     HOOK Hook_oCItem_InitByScript PATCH(&oCItem::InitByScript, &oCItem::InitByScript_StExt);
     void oCItem::InitByScript_StExt(int instance, int bInSaveGame)
     {
+        // TEMP DIAG: crash przy PODNOSZENIU broni bossa. Trace konczyl sie czysto
+        // na "<< ItemInfoPanel OK" (item=NULL = item znika z listy trupa), czyli
+        // gra pada w samym PRZENIESIENIU - przed AddItemEffects. Bron bossa to
+        // dynamiczna instancja (STEXT_GENERATED_*), a symptom "0 obrazen" sugeruje,
+        // ze jest juz uszkodzona zanim ja dotkniesz. Tu silnik ja odtwarza.
+        StExt_Trace(zSTRING(">> InitByScript inst=") + Z(instance) + " inSave=" + Z(bInSaveGame));
         THISCALL(Hook_oCItem_InitByScript)(instance, bInSaveGame);
+        StExt_Trace(zSTRING("   .. oryginal OK, name='") + GetItemInstanceName(this) + "'");
         if ((instance != Invalid) && this)
         {
             const ItemExtension* extension = GetItemExtension(this);
+            StExt_Trace(zSTRING("   .. ext=") + Z((int)extension));
             if (extension)
             {
                 if (!ApplyItemExtension(this, extension)) {
+                    StExt_Trace("   .. ApplyItemExtension ZAWIODL!");
                     DEBUG_MSG("oCItem::InitByScript_StExt: fail apply item extension for '" + this->GetInstanceName() + "'!");
                 }
+                StExt_Trace("   .. ApplyItemExtension OK");
             }
 
             // Global price update
@@ -773,6 +790,7 @@ namespace Gothic_II_Addon
             }
             this->value = static_cast<int>(price);
         }
+        StExt_Trace("<< InitByScript OK");
     }
 
     inline bool IsItemPriceValid(const int price) { return (price >= 0) && (price <= ItemExtension_MaxPrice); }
@@ -780,9 +798,18 @@ namespace Gothic_II_Addon
     HOOK Hook_oCItem_GetValue PATCH(&oCItem::GetValue, &oCItem::GetValue_StExt);
     int oCItem::GetValue_StExt()
     {
+        // TEMP DIAG: podnoszenie itemu wstawia go do ekwipunku, a sortowanie
+        // ekwipunku wola GetValue na swiezym itemie - kandydat na miejsce
+        // crashu przy zbieraniu generowanej broni. Log tylko przy ZMIANIE
+        // itemu (inaczej zalaloby plik przy kazdej klatce w handlu).
+        static const oCItem* lastValTraced = Null;
+        const bool trace = (this != lastValTraced);
+        if (trace) { lastValTraced = this; StExt_Trace(zSTRING(">> GetValue inst='") + GetItemInstanceName(this) + "'"); }
         int result = THISCALL(Hook_oCItem_GetValue)();
+        if (trace) StExt_Trace("   .. oryginal OK");
 
         const ItemExtension* extension = GetItemExtension(this);
+        if (trace) StExt_Trace(zSTRING("<< GetValue ext=") + Z((int)extension));
         if (extension) 
             result = IsItemPriceValid(extension->Cost) ? extension->Cost : IsItemPriceValid(this->value) ? this->value : 10;
         else if (!IsItemPriceValid(result))
@@ -791,22 +818,89 @@ namespace Gothic_II_Addon
         return ValidateValue(result, 10, ItemExtension_MaxPrice);
     }
 
+    // GROUND PICKUP path (crash: podnoszenie broni bossa Z ZIEMI). Bron trzymana
+    // przez bossa lada na ziemi po smierci; podnoszona z ziemi idzie przez
+    // DoTakeVob -> PutInInv i NIE odpala InitByScript, wiec ApplyItemExtension
+    // (z guardem na ItemClassData) nigdy sie nie wykonuje - inaczej niz loot z
+    // okna trupa (kontener -> InitByScript). Dlatego zbroja z okna dziala, a bron
+    // z ziemi crashuje. Ten hook loguje CALA sciezke z ziemi (dotad nieobserwowana)
+    // i defensywnie re-aplikuje rozszerzenie po podniesieniu, zeby item na ziemi
+    // dostal to samo co przez okno.
+    HOOK Hook_oCNpc_DoTakeVob PATCH(&oCNpc::DoTakeVob, &oCNpc::DoTakeVob_StExt);
+    int oCNpc::DoTakeVob_StExt(zCVob* vob)
+    {
+        oCItem* item = dynamic_cast<oCItem*>(vob);
+        const bool trace = item && this && this->IsSelfPlayer();
+        if (trace)
+        {
+            const ItemExtension* ext = GetItemExtension(item);
+            StExt_Trace(zSTRING(">> DoTakeVob inst='") + GetItemInstanceName(item)
+                + "' flags=" + Z(item->flags)
+                + " ext=" + Z((int)ext)
+                + (ext ? (zSTRING(" classData=") + Z((int)ext->ItemClassData)) : zSTRING("")));
+        }
+
+        const int result = THISCALL(Hook_oCNpc_DoTakeVob)(vob);
+        if (trace) StExt_Trace("   .. oryginal PutInInv OK");
+
+        // Item juz w plecaku gracza. Sciezka z ziemi NIE przeszla przez InitByScript,
+        // wiec rozszerzenie moglo nie zostac domkniete. KLUCZOWE: wymuszamy
+        // Initialize() na rozszerzeniu - to re-linkuje ItemClassData (ext->ItemClassData
+        // = GetItemClassDescriptor(ItemClassID)). Wlasnie ten wskaznik bywal NULL i
+        // zabijal kazdy pozniejszy odczyt broni bossa. Re-link naprawia ZRODLO dla
+        // dowolnego deferred-czytacza, nie tylko dla ApplyItemExtension. Potem
+        // domykamy staty tak jak sciezka z okna.
+        if (item && this && this->IsSelfPlayer() && IsExtendedItem(item))
+        {
+            ItemExtension* extension = GetItemExtension(item);
+            if (extension)
+            {
+                if (trace) StExt_Trace(zSTRING("   .. Initialize (re-link ItemClassData) classData_przed=") + Z((int)extension->ItemClassData));
+                extension->Initialize();
+                if (trace) StExt_Trace(zSTRING("   .. classData_po=") + Z((int)extension->ItemClassData));
+                ApplyItemExtension(item, extension);
+                if (trace) StExt_Trace("   .. re-ApplyItemExtension OK");
+            }
+        }
+        if (trace) StExt_Trace("<< DoTakeVob OK");
+        return result;
+    }
+
     HOOK Hook_oCNpc_AddItemEffects PATCH(&oCNpc::AddItemEffects, &oCNpc::AddItemEffects_StExt);
     void oCNpc::AddItemEffects_StExt(oCItem* item)
     {
-        THISCALL(Hook_oCNpc_AddItemEffects)(item);
-        if (!item || !IsSelfPlayer() || !IsExtendedItem(item)) return;
+        // TEMP DIAG: crash zglaszany DOKLADNIE przy podniesieniu broni bossa,
+        // a trace urywal sie tuz po doliczeniu statow itemu - czyli tutaj.
+        // Kazdy krok osobno: ostatnia linia w stext_trace.log wskaze winnego.
+        const bool trace = item && IsSelfPlayer();
+        if (trace) StExt_Trace(zSTRING(">> AddItemEffects inst='") + GetItemInstanceName(item) + "'");
 
+        THISCALL(Hook_oCNpc_AddItemEffects)(item);
+        if (trace) StExt_Trace("   .. oryginal OK");
+
+        if (!item || !IsSelfPlayer() || !IsExtendedItem(item))
+        {
+            if (trace) StExt_Trace("<< AddItemEffects: nie nasz item, koniec");
+            return;
+        }
+
+        if (trace) StExt_Trace("   .. GetItemExtension");
         const ItemExtension* extension = GetItemExtension(item);
+        if (trace) StExt_Trace(zSTRING("   .. AddItemExtensionEffects ext=") + Z((int)extension));
         if (extension && !AddItemExtensionEffects(item, extension)) {
             DEBUG_MSG("oCNpc::AddItemEffects_StExt: fail add item effects from '" + item->GetInstanceName() + "'!");
         }
+        if (trace) StExt_Trace("<< AddItemEffects OK");
     }
 
     HOOK Hook_oCNpc_RemoveItemEffects PATCH(&oCNpc::RemoveItemEffects, &oCNpc::RemoveItemEffects_StExt);
     void oCNpc::RemoveItemEffects_StExt(oCItem* item)
     {
+        // TEMP DIAG: crash przy ZBIERANIU zalozonej broni z trupa bossa - to
+        // jest jedna z dwoch sciezek, ktore odpalaja sie przy zdejmowaniu.
+        StExt_Trace(zSTRING(">> RemoveItemEffects inst='") + GetItemInstanceName(item) + "'");
         THISCALL(Hook_oCNpc_RemoveItemEffects)(item);
+        StExt_Trace("<< RemoveItemEffects OK");
         if (!item || !IsSelfPlayer() || !IsExtendedItem(item)) return;
 
         const ItemExtension* extension = GetItemExtension(item);

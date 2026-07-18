@@ -900,12 +900,20 @@ namespace Gothic_II_Addon
 
 	ItemExtension* CreateItemExtension(const int power, const oCItem* item, const ItemClassDescriptor* itemClassDescriptor);
 	ItemExtension* CreateItemExtension(const int power, zSTRING& instanceName, const ItemClassDescriptor* itemClassDescriptor);
+	extern void SetItemExtensionInitialProps(ItemExtension* itemExtension, const oCItem* item);
+	extern ItemExtension* RollInPlaceMagicItem(oCItem* item, const int power);
+	extern const int EnchantItemInPlace(oCItem* item, const int power);
+	extern const int RerollItemInPlace(oCItem* item, const int power);
 
 	ItemExtension* RollSpecificMagicItem(const int power, const ItemClassKey classKey);
 	ItemExtension* RollSpecificSimpleItem(const int power, const ItemClassKey classKey);
 
 	const int GenerateNewMagicItem(const int itemClassId, int power);
 	const int GenerateNewRegularItem(const int itemClassId, int power);
+
+	// When >= 0, RollItemRank returns this value instead of rolling and the
+	// generated-item cache lookup is skipped (StExt_GenerateRankedItem external).
+	extern int StExt_ForceItemRank;
 
 	void FindPlayerItems(const int itemClassId, Array<const oCItem*>& foundItems);
 	void FindPlayerItems(const Array<int>& itemClassIds, Array<const oCItem*>& foundItems);

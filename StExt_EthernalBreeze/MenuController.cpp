@@ -529,19 +529,132 @@ namespace Gothic_II_Addon
 		ogame->Unpause();
 	}
 
+	// TEMP DIAG (crash-on-looting hunt): this runs every frame the cursor sits on
+	// an item in a container - i.e. exactly when the player loots a corpse and the
+	// game dies. Each step is traced separately, so the last line in stext_trace.log
+	// names which one killed it. Guarded per-item: only the FIRST frame for a given
+	// item logs, otherwise this floods at frame rate and hides the evidence.
 	inline void UpdateExtraItemInfoPanelState(const oCItem* item)
 	{
 		if (!ExtraItemInfoPanel) return;
+
+		static const oCItem* lastTraced = Null;
+		const bool trace = (item != lastTraced);
+		lastTraced = item;
+
+		if (trace)
+		{
+			if (!item) StExt_Trace(">> ItemInfoPanel: item=NULL (kursor zszedl z itemu)");
+			else StExt_Trace(zSTRING(">> ItemInfoPanel: inst='")
+				+ GetItemInstanceName(const_cast<oCItem*>(item))
+				+ "' ptr=" + zSTRING((int)item));
+		}
+
 		ExtraItemInfoPanel->IsVisible = item != Null;
+		if (trace) StExt_Trace("   .. SetDisplayItem");
 		ExtraItemInfoPanel->SetDisplayItem(item);
+		if (trace) StExt_Trace("   .. Update");
 		ExtraItemInfoPanel->Update();
+		if (trace) StExt_Trace("   .. Draw");
 		ExtraItemInfoPanel->Draw();
+		if (trace) StExt_Trace("<< ItemInfoPanel OK");
 	}
-	
+
+	// ========================================================================
+	//  DRUGI WEKTOR tego samego crashu (root cause: oInventory.cpp:1037,
+	//  patrz komentarz nad DrawItemInfo_StExt nizej). Nasz fix w DrawItemInfo
+	//  chronil tylko FOKUSOWANY item (panel szczegolow). Ale oCItemContainer::
+	//  Draw() (oInventory.cpp:1129) renderuje w PETLI KAZDY item w calym
+	//  kontenerze - linia 1316: item->RenderItem(rndWorld, itemView, ...) -
+	//  dla wszystkich slotow na raz, nie tylko zaznaczonego. Duch-item (dynamiczna
+	//  instancja z martwej sesji: wskaznik C++ zywy, ale item->instanz wskazuje
+	//  na nieistniejacy symbol) w tej petli nigdy nie przechodzil przez nasz
+	//  guard - crash mogl wystapic przy samym OTWARCIU okna, zanim gracz zdazyl
+	//  na cokolwiek najechac. Zgloszenie live: crash zaraz po ZakonBoss_GiveLoot,
+	//  zero sladu ItemInfoPanel w trace = crash byl W Draw(), nie w DrawItemInfo.
+	//  Fix: PRZED oryginalnym Draw() skanujemy cala liste kontenera i usuwamy
+	//  kazdego ducha, wiec oryginal nigdy juz nie dostaje do rak zepsutego itemu.
+	//  Dwuprzebiegowe (zbierz, potem usun) - zgodnie z wzorcem TransferAllItemsTo
+	//  w silniku: nie modyfikujemy listy w trakcie jej iterowania.
+	// ========================================================================
+	HOOK Hook_oCItemContainer_Draw PATCH(&oCItemContainer::Draw, &oCItemContainer::Draw_StExt);
+	void oCItemContainer::Draw_StExt()
+	{
+		zCListSort<oCItem>* it = this->GetContents();
+		if (it)
+		{
+			Array<oCItem*> ghosts;
+			while (it)
+			{
+				oCItem* itm = it->GetData();
+				if (itm)
+				{
+					zCPar_Symbol* sym = parser->GetSymbol(itm->instanz);
+					if (!sym || ((int)sym->type != zPAR_TYPE_INSTANCE))
+						ghosts.Insert(itm);
+				}
+				it = it->GetNextInList();
+			}
+			for (int i = 0; i < ghosts.GetNum(); ++i)
+			{
+				StExt_Trace(zSTRING("!! Draw: ITEM-DUCH w kontenerze (instanz=") + Z(ghosts[i]->instanz) + ") - usuwam");
+				this->Remove(ghosts[i]);
+			}
+		}
+		THISCALL(Hook_oCItemContainer_Draw)();
+	}
+
 	HOOK Hook_oCItemContainer_DrawItemInfo PATCH(&oCItemContainer::DrawItemInfo, &oCItemContainer::DrawItemInfo_StExt);
 	void oCItemContainer::DrawItemInfo_StExt(oCItem* item, zCWorld* world)
 	{
-		THISCALL(Hook_oCItemContainer_DrawItemInfo)(item, world);
+		// ========================================================================
+		//  ROOT CAUSE crashu przy lootowaniu trupa (zrodlo silnika, potwierdzone):
+		//  oInventory.cpp:1037  oCItemContainer::DrawItemInfo robi
+		//        if (pWorld) { ... pItem->RenderItem(pWorld, ...); }
+		//  a sprawdzenie  if (pItem)  jest DOPIERO w linii 1045. Czyli gdy
+		//  pItem==NULL a pWorld!=NULL, silnik wola  NULL->RenderItem()  =>
+		//  natychmiastowy crash. Zdarza sie gdy po wzieciu itemu z trupa fokus
+		//  laduje na PUSTYM slocie w tej samej klatce, w ktorej render jest
+		//  aktywny. Trupy bossow (najwiecej lootu = najwiecej przebudow listy)
+		//  triggerowaly to najczesciej. Trace: crash zawsze tuz po "item=NULL",
+		//  bez sladu panelu -> crash byl w oryginale, przed naszym kodem.
+		// ========================================================================
+
+		// WARSTWA 1 - bezposredni fix root cause: gdy nie ma itemu, wolamy
+		// oryginal BEZ swiata. Blok if(pWorld) sie nie wykona, RenderItem
+		// zostanie pominiety, a reszta panelu (tlo, ClrPrintwin) wyczysci sie
+		// normalnie. To dokladnie bezpieczna sciezka, ktora silnik ma dla NULL.
+		if (!item)
+		{
+			THISCALL(Hook_oCItemContainer_DrawItemInfo)(item, Null);
+			UpdateExtraItemInfoPanelState(Null);
+			return;
+		}
+
+		// WARSTWA 2 - ITEM-DUCH: dynamiczna instancja z martwej sesji albo
+		// uszkodzony wskaznik. instanz nie wskazuje juz na zywy symbol-instancje,
+		// wiec oryginalny render i tak by padl. Usuwamy z pojemnika (znika z
+		// listy, nie da sie podniesc). Zaden legalny item tego nie triggeruje.
+		zCPar_Symbol* sym = parser->GetSymbol(item->instanz);
+		if (!sym || ((int)sym->type != zPAR_TYPE_INSTANCE))
+		{
+			StExt_Trace(zSTRING("!! DrawItemInfo: ITEM-DUCH (instanz=") + Z(item->instanz)
+				+ (sym ? zSTRING(", symbol nie jest instancja") : zSTRING(", symbol NIE istnieje"))
+				+ ") - usuwam z pojemnika");
+			this->Remove(item);
+			UpdateExtraItemInfoPanelState(Null);
+			return;
+		}
+
+		// WARSTWA 3 - siatka na wszystko inne (uszkodzony visual dynamicznej
+		// broni itp.): crash pojedynczej klatki panelu nie moze zabic sesji.
+		try { THISCALL(Hook_oCItemContainer_DrawItemInfo)(item, world); }
+		catch (...)
+		{
+			StExt_Trace("!! DrawItemInfo: oryginal rzucil wyjatek - panel pominiety");
+			UpdateExtraItemInfoPanelState(Null);
+			return;
+		}
 		UpdateExtraItemInfoPanelState(item);
 	}
 

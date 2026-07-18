@@ -146,7 +146,14 @@ namespace Gothic_II_Addon
 
 	void ItemExtension::UpdatePrice()
 	{
-		float priceMult = 0.1f + (Level * ItemClassData->PriceLevelBonus) + (Rank * ItemClassData->PriceRankBonus) + (Quality * ItemClassData->PriceQualityBonus);
+		// ItemClassData bywa NULL (klasa bez deskryptora) - guard jak w reszcie
+		// metod tej klasy. Bez tego deref NULL->PriceLevelBonus wywalal gre przy
+		// przeliczaniu ceny broni bossa. Fallback: bonusy klasowe = neutralne.
+		const float priceLevelBonus   = ItemClassData ? ItemClassData->PriceLevelBonus   : 0.0f;
+		const float priceRankBonus    = ItemClassData ? ItemClassData->PriceRankBonus    : 0.0f;
+		const float priceQualityBonus = ItemClassData ? ItemClassData->PriceQualityBonus : 0.0f;
+		const float priceMultClass    = ItemClassData ? ItemClassData->PriceMult         : 1.0f;
+		float priceMult = 0.1f + (Level * priceLevelBonus) + (Rank * priceRankBonus) + (Quality * priceQualityBonus);
 		priceMult = ValidateValue(priceMult, 0.0001f, 5.00f);
 
 		int itemExtraCost = Properties[(int)ItemProperty::AdditionalCost];
@@ -172,7 +179,7 @@ namespace Gothic_II_Addon
 		statsCost = ValidateValue(static_cast<int>(statsCost * ItemsGeneratorConfigs.ItemStatPriceMult), 1, 25000);
 		abilitiesCost = ValidateValue(static_cast<int>(statsCost * ItemsGeneratorConfigs.ItemStatPriceMult), 1, 50000);
 
-		totalCost = static_cast<int>((statsCost + abilitiesCost) * ItemClassData->PriceMult);
+		totalCost = static_cast<int>((statsCost + abilitiesCost) * priceMultClass);
 		totalCost += static_cast<int>((Properties[(int)ItemProperty::InitialCost] + itemExtraCost) * priceMult);
 		totalCost = static_cast<int>(totalCost * ItemsGeneratorConfigs.ItemPriceMult);
 

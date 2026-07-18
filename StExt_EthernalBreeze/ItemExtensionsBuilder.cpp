@@ -560,7 +560,20 @@ namespace Gothic_II_Addon
         const float valueMax = statData->RollMaxPower * power;
         const int result = static_cast<int>(((StExt_Rand::Range(valueMin, valueMax) * (1.0f + classBonus)) * classMult) * ItemsGeneratorConfigs.ItemStatPowerMult);
         const int chapterCap = StExt_GetChapterRollCap(statData->RollMaxCap);
-        return ValidateValue(result, ValidateValueMax(statData->RollMinCap, chapterCap), chapterCap);
+        const int floorCap = ValidateValueMax(statData->RollMinCap, chapterCap);
+        const int final = ValidateValue(result, floorCap, chapterCap);
+        // TEMP DIAG: the chapter gate is the newest change on the loot path and
+        // therefore suspect #1 for the crash-on-looting. Log every rolled stat
+        // with its caps so a degenerate one (cap 0, floor > ceiling) is visible.
+        StExt_Trace(zSTRING("    stat id=") + zSTRING(statData->Id)
+            + " raw=" + zSTRING(result)
+            + " rollMin=" + zSTRING(statData->RollMinCap)
+            + " rollMax=" + zSTRING(statData->RollMaxCap)
+            + " chapCap=" + zSTRING(chapterCap)
+            + " floor=" + zSTRING(floorCap)
+            + " -> " + zSTRING(final)
+            + ((chapterCap <= 0) ? "  <<<< CAP<=0 !!" : ""));
+        return final;
     }
     inline int RollItemStatValue(const int statDataId, const int power, const int level, const int rank, const int quality, const ItemClassDescriptor* itemClassDescriptor)
     {
@@ -788,6 +801,9 @@ namespace Gothic_II_Addon
             return Null;
         }
 
+        StExt_Trace(zSTRING(">> CreateItemExtension base='") + GetItemInstanceName(item)
+            + "' power=" + Z(power) + " classId=" + Z((int)itemClassDescriptor->ItemClassID));
+
         ItemExtension* result = new ItemExtension();
         result->UId = GetNextItemUId();
         result->InstanceName = CreateExtendedItemInstanceName(result->UId);
@@ -798,9 +814,12 @@ namespace Gothic_II_Addon
         result->Class = ItemClassKey_GetClass(result->ItemClassID);
         result->SubClass = ItemClassKey_GetSubClass(result->ItemClassID);
         result->ItemClassData = itemClassDescriptor;
-        
+
         result->Properties[(int)ItemProperty::InitialPower] = power;
+        StExt_Trace(zSTRING("   .. SetItemExtensionInitialProps uid=") + Z((int)result->UId));
         SetItemExtensionInitialProps(result, item);
+        StExt_Trace(zSTRING("<< CreateItemExtension OK uid=") + Z((int)result->UId)
+            + " inst='" + result->InstanceName + "'");
         return result;
     }
 

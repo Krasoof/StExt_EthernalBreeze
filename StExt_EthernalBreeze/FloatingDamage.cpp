@@ -1,6 +1,7 @@
 #include <UnionAfx.h>
 #include <StonedExtension.h>
 #include <vector>
+#include <cstdio>
 
 // Diablo/Souls-style floating damage numbers over hit enemies. Crash-safe by
 // design: a label anchors to a COPY of the target's world position at hit time
@@ -10,6 +11,76 @@
 
 namespace Gothic_II_Addon
 {
+	// TEMP DIAG (remove once the weapon glow is solved): dump the emitter shape of the
+	// base game's weapon-enchant particle FX. Our own glow only ever lights the hilt, and
+	// so does the base FX when we attach it via item.effect - yet in Returning the very
+	// same enchant covers the blade. zCParticleEmitter maps 1:1 onto the script class, so
+	// creating the instance tells us exactly which shape/mesh the working effect uses.
+	static void StExt_PfxDiagLog(const zSTRING& msg)
+	{
+		FILE* f = fopen("stext_pfx.log", "a");
+		if (f) { fputs(msg.ToChar(), f); fputc('\n', f); fclose(f); }
+	}
+
+	static void StExt_DumpPfxShape(const char* name)
+	{
+		const int idx = parser->GetIndex(zSTRING(name));
+		if (idx == Invalid) { StExt_PfxDiagLog(zSTRING(name) + " -> NOT FOUND"); return; }
+
+		zCParticleEmitter em;              // ctor builds the zSTRINGs before the parser fills them
+		parser->CreateInstance(idx, &em);
+		StExt_PfxDiagLog(zSTRING(name)
+			+ " | shpType=" + em.shpType_S
+			+ " | FOR=" + em.shpFOR_S
+			+ " | offset=" + em.shpOffsetVec_S
+			+ " | dim=" + em.shpDim_S
+			+ " | mesh='" + em.shpMesh_S + "'"
+			+ " | isVolume=" + zSTRING(em.shpIsVolume)
+			+ " | meshRender=" + zSTRING(em.shpMeshRender_B)
+			+ " | distrib=" + em.shpDistribType_S);
+	}
+
+	// Symbol type ids: 0 void, 1 float, 2 int, 3 string, 4 class, 5 func, 6 proto, 7 instance
+	static void StExt_DumpSymbol(const char* name)
+	{
+		zCPar_Symbol* s = parser->GetSymbol(zSTRING(name));
+		if (!s) { StExt_PfxDiagLog(zSTRING("SYM ") + name + " -> NOT FOUND"); return; }
+		zSTRING line = zSTRING("SYM ") + name
+			+ " | type=" + zSTRING((int)s->type)
+			+ " | ele=" + zSTRING((int)s->ele)
+			+ " | flags=" + zSTRING((int)s->flags);
+		if (s->type == 2 && s->ele <= 1) line += zSTRING(" | int=") + zSTRING(s->single_intdata);
+		StExt_PfxDiagLog(line);
+	}
+
+	void StExt_DumpWeaponGlowPfx()
+	{
+		static bool done = false;
+		if (done) return;
+		done = true;
+
+		StExt_PfxDiagLog(zSTRING("=== weapon-glow PFX shapes ==="));
+		// Adanos-warrior enchant: this is the HILT-only look we get today.
+		StExt_DumpPfxShape("MFX_AW_ENCHANT_FIRE");
+		StExt_DumpPfxShape("MFX_AW_ENCHANT_ORIGIN_FIRE");
+		// Fire Weapon spell: the iconic burning BLADE - this is the coverage we want.
+		StExt_DumpPfxShape("MFX_FIREWEAPON_ORIGIN");
+		StExt_DumpPfxShape("MFX_FIREWEAPON_60S_INIT");
+		// ours, only lights the hilt:
+		StExt_DumpPfxShape("MFX_STEXT_WGLOW_FIRE");
+
+		// Gallahad's enchant: parametric (colour/pps/type), builds its FX at runtime and
+		// paints the BLADE. Learn its signature so we can drive it per element.
+		StExt_PfxDiagLog(zSTRING("=== Gallahad visual system ==="));
+		StExt_DumpSymbol("RX_ApplyVisualGallahad");
+		StExt_DumpSymbol("RX_ApplyVisualGallahad.par0");
+		StExt_DumpSymbol("RX_RemoveVisualGallahad.par0");
+		StExt_DumpSymbol("RX_Gallahad_Visual_Color");
+		StExt_DumpSymbol("RX_Gallahad_Visual_PPS");
+		StExt_DumpSymbol("RX_Gallahad_Visual_Type");
+		StExt_DumpSymbol("RX_Gallahad_Visual_WeaponType");
+	}
+
 	struct StExtFloatDmg
 	{
 		zVEC3 worldPos;

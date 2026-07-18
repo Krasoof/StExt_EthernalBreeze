@@ -409,6 +409,8 @@ namespace Gothic_II_Addon
         THISCALL(Hook_oCNpc_ProcessNpc)();
         if (this && !this->IsDead())
         {
+            // (parry detection moved to Damage.cpp OnDamage_StExt - the AI
+            // clears didParade inside ProcessNpc, so this spot never saw it)
             parser->SetInstance(StExt_ModSelf_SymId, this);
             parser->CallFunc(StExt_OnAiStateFunc);
             parser->SetInstance(StExt_ModSelf_SymId, Null);

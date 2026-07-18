@@ -192,6 +192,10 @@ namespace Gothic_II_Addon
 		int IsDot;
 		int IsStream;
 		int ManaCost;
+		// Faktyczna inwestycja many wg silnika (oCSpell.manaInvested) -
+		// pomiar delty w skryptach bywa zerowy (NO_MANADEC). Lustro
+		// Daedalus C_SpellInfo (Externals.d) - nowe pola TYLKO na koncu.
+		int EngineManaInvested;
 	};
 
 	struct NpcExtension
@@ -330,7 +334,7 @@ namespace Gothic_II_Addon
 		int m_pVARS[400];
 		Timer timer;
 
-		// список нпс, которых будет игнорить нпс некоторое время
+		// пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ
 		zCArray<NpcIgnoreEntry*> tempIgnoreList;
 
 #ifdef INTERACTIVE_ON

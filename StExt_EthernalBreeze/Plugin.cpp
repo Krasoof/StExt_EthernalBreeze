@@ -29,6 +29,7 @@ namespace Gothic_II_Addon
         DEBUG_MSG("StExt - Initialize mod...");
         StonedExtension_InitModData();
         StonedExtension_InitUi();
+        StExt_DumpWeaponGlowPfx();
         StExt_ModReady = true;
         DEBUG_MSG("StExt - Mod was initialized!");
         DEBUG_MSG("");
@@ -46,6 +47,7 @@ namespace Gothic_II_Addon
             StonedExtension_Loop();
             TimedEffectsLoop();
             StExt_FloatingDamage_Loop();
+            StExt_Subtitles_Loop();
             DrawModInfo();
         }
     }
