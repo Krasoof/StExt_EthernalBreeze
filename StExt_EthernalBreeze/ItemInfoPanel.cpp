@@ -298,6 +298,27 @@ namespace Gothic_II_Addon
 			// magiczny/kostur nosi spell) - runtime liczy to doklaniej z instancji
 			const int usesMana = (DisplayItem && DisplayItem->spell > 0) ? 1 : 0;
 
+			// Realny cios per postac + rozbicie na kanaly (sieczne/obuchowe/...)
+			// - te same skrypty co runtime (StExt_Tooltip_RealHit), proporcje
+			// kanalow wg damage[] broni. Szacunek: bez crita i pancerza celu.
+			static const int fRealHit = parser->GetIndex("StExt_Tooltip_RealHit");
+			if (fRealHit != Invalid && DisplayItem && DisplayItem->damageTotal > 0)
+			{
+				const int realHit = *(int*)parser->CallFunc(fRealHit, weaponDmg, weaponFlags, usesMana);
+				CreateContentSeparatorLine();
+				CreateContentLine(zSTRING("Realny cios: ~") + Z(realHit) + " (twoja postac, przed pancerzem)", ItemTextColor_Green);
+				static const char* DmgName[8] = { "Bariera", "Obuchowe", "Sieczne", "Ogien", "Podmuch", "Magia", "Klute", "Upadek" };
+				zSTRING split = "";
+				for (int di = 0; di < 8; ++di)
+				{
+					if (DisplayItem->damage[di] <= 0) continue;
+					const int part = (int)((__int64)realHit * DisplayItem->damage[di] / DisplayItem->damageTotal);
+					if (!split.IsEmpty()) split += "  |  ";
+					split += zSTRING(DmgName[di]) + " ~" + Z(part);
+				}
+				if (!split.IsEmpty()) CreateContentLine(zSTRING("  w tym: ") + split, ItemTextColor_Green);
+			}
+
 			if (perkSpell > 0 && perkEl >= 0 && tooltipFuncsOk)
 			{
 				const int flat  = *(int*)parser->CallFunc(fElementPerHit, perkSpell, perkPower, weaponDmg, usesMana);
