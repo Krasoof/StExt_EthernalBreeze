@@ -47,7 +47,8 @@ namespace Gothic_II_Addon
             StonedExtension_Loop();
             TimedEffectsLoop();
             StExt_FloatingDamage_Loop();
-            StExt_Subtitles_Loop();
+            // StExt_Subtitles_Loop usuniety z petli: napisy przejal natywny
+            // EV_OUTPUT (StExt_Say v2), stub zostal tylko dla linkera.
             DrawModInfo();
         }
     }

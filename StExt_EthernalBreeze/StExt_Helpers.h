@@ -18,8 +18,19 @@ namespace Gothic_II_Addon
 	// crashed. Every instrumented step logs ">>" on entry and "<<" on exit -
 	// a ">>" with no matching "<<" is the murder scene.
 	// DEBUG_MSG is useless here: it is a no-op in Release.
+	// Master switch CALEGO trace (StExt_Config_TraceEnabled, Constants.d).
+	// Release: OFF - kazda linia to fopen/fclose, czyli dyskowe I/O per CIOS
+	// w walce (1.8 MB logu z jednej sesji). Symbol cache'owany po starcie.
+	inline bool StExt_TraceOn()
+	{
+		static zCPar_Symbol* sym = Null;
+		if (!sym && parser) sym = parser->GetSymbol("STEXT_CONFIG_TRACEENABLED");
+		return sym && sym->single_intdata;
+	}
+
 	inline void StExt_Trace(const char* msg)
 	{
+		if (!StExt_TraceOn()) return;
 		FILE* f = fopen("stext_trace.log", "a");
 		if (f) { fputs(msg, f); fputc('\n', f); fclose(f); }
 	}

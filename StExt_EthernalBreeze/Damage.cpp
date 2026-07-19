@@ -12,6 +12,7 @@ namespace Gothic_II_Addon
 
 	static void StExt_DamageDiagLog(int weaponFlags, int rawBefore, int flat, int perc, int wanted, int dmgType)
 	{
+		if (!StExt_TraceOn()) return;
 		const char* kind = "other";
 		if (weaponFlags & ((1 << 14) | (1 << 16)))      kind = "SWORD";
 		else if (weaponFlags & ((1 << 15) | (1 << 17))) kind = "AXE";
@@ -50,6 +51,7 @@ namespace Gothic_II_Addon
 	// included - as protected and clamps the blow to leave exactly 1 HP.
 	static void StExt_CombatDiagLog(const zSTRING& line)
 	{
+		if (!StExt_TraceOn()) return;
 		FILE* f = fopen("stext_combat.log", "a");
 		if (f) { fputs(line.ToChar(), f); fputc('\n', f); fclose(f); }
 	}
