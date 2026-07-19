@@ -340,6 +340,7 @@ namespace Gothic_II_Addon
 
 		// names / affixes
 		arc.WriteString("OwnName", OwnName);
+		arc.WriteString("OwnVisual", OwnVisual);
 		arc.WriteString("Preffix", Preffix);
 		arc.WriteString("Affix", Affix);
 		arc.WriteString("Suffix", Suffix);
@@ -417,6 +418,7 @@ namespace Gothic_II_Addon
 
 		// names / affixes
 		arc.ReadString("OwnName", OwnName);
+		arc.ReadString("OwnVisual", OwnVisual);
 		arc.ReadString("Preffix", Preffix);
 		arc.ReadString("Affix", Affix);
 		arc.ReadString("Suffix", Suffix);

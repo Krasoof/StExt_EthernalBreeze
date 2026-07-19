@@ -1783,6 +1783,59 @@ namespace Gothic_II_Addon
         return True;
     }
 
+    // Unikaty bossow: jak GenerateRankedItem, ale z WYMUSZONYM zywiolem
+    // (nazwa symbolu spella, np. "SPL_ICELANCE"). Ranga i zywiol gwarantowane.
+    // Daedalus: StExt_GenerateUniqueItem(classId, power, rank, elemSpellSym)
+    int __cdecl StExt_GenerateUniqueItem()
+    {
+        zSTRING elemSpellSym; parser->GetParameter(elemSpellSym);
+        int rank, power, itemClassId;
+        parser->GetParameter(rank);
+        parser->GetParameter(power);
+        parser->GetParameter(itemClassId);
+
+        if (power <= 0) power = 1;
+        zCPar_Symbol* spellSym = parser->GetSymbol(elemSpellSym);
+        StExt_ForceItemElementSpell = spellSym ? spellSym->single_intdata : -1;
+        StExt_ForceItemRank = ValidateValue(rank, 0, 5);
+        const int itemIndex = GenerateNewMagicItem(itemClassId, power);
+        StExt_ForceItemRank = -1;
+        StExt_ForceItemElementSpell = -1;
+        parser->SetReturn(itemIndex);
+        return True;
+    }
+
+    // Nazwa wlasna wygenerowanego itemu (pole OwnName extensiona - nadpisuje
+    // cala wyswietlana nazwe i archiwizuje sie z sejwem). Wolac PRZED
+    // createinvitems, zeby ApplyItemExtension nalozyl ja przy inicjalizacji.
+    // Daedalus: StExt_SetGeneratedItemName(itmIndex, name)
+    int __cdecl StExt_SetGeneratedItemName()
+    {
+        zSTRING name; parser->GetParameter(name);
+        int itmIndex; parser->GetParameter(itmIndex);
+
+        zCPar_Symbol* sym = parser->GetSymbol(itmIndex);
+        ItemExtension* ext = sym ? ItemsExtensionData->Get(sym->name) : Null;
+        if (ext) ext->OwnName = name;
+        parser->SetReturn(ext ? True : False);
+        return True;
+    }
+
+    // Wymuszony mesh wygenerowanego itemu (pole OwnVisual) - epicki wyglad
+    // unikatow bossow. Wolac PRZED createinvitems, jak wyzej.
+    // Daedalus: StExt_SetGeneratedItemVisual(itmIndex, visual)
+    int __cdecl StExt_SetGeneratedItemVisual()
+    {
+        zSTRING visual; parser->GetParameter(visual);
+        int itmIndex; parser->GetParameter(itmIndex);
+
+        zCPar_Symbol* sym = parser->GetSymbol(itmIndex);
+        ItemExtension* ext = sym ? ItemsExtensionData->Get(sym->name) : Null;
+        if (ext) ext->OwnVisual = visual;
+        parser->SetReturn(ext ? True : False);
+        return True;
+    }
+
     int __cdecl StExt_GetRegularItem()
     {
         int itemClassId, power;
@@ -3156,6 +3209,9 @@ namespace Gothic_II_Addon
 
         parser->DefineExternal("StExt_GenerateRandomItem", StExt_CreateRandomItem, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_GenerateRankedItem", StExt_GenerateRankedItem, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_VOID);
+        parser->DefineExternal("StExt_GenerateUniqueItem", StExt_GenerateUniqueItem, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_STRING, zPAR_TYPE_VOID);
+        parser->DefineExternal("StExt_SetGeneratedItemName", StExt_SetGeneratedItemName, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_STRING, zPAR_TYPE_VOID);
+        parser->DefineExternal("StExt_SetGeneratedItemVisual", StExt_SetGeneratedItemVisual, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_STRING, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_GetRegularItem", StExt_GetRegularItem, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_FindTargetInRadius", StExt_FindTargetInRadius, zPAR_TYPE_INT, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_STRING, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_UseEnchantedItem", StExt_UseEnchantedItem, zPAR_TYPE_VOID, zPAR_TYPE_VOID);

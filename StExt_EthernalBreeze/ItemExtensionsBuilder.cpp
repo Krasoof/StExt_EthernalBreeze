@@ -281,6 +281,9 @@ namespace Gothic_II_Addon
     }
 
     int StExt_ForceItemRank = -1;
+    // Wymuszony zywiol generowanego itemu (spell id) - unikaty bossow.
+    // -1 = normalne losowanie. Ustawiany/zerowany przez StExt_GenerateUniqueItem.
+    int StExt_ForceItemElementSpell = -1;
 
     inline int RollItemRank(const int power)
     {

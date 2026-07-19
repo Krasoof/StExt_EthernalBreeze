@@ -310,6 +310,10 @@ namespace Gothic_II_Addon
 
         item->description = extension->OwnName.IsEmpty() ? preffix + item->description + affix + suffix : extension->OwnName;
         item->name = item->description;
+        // oCItem::SetVisual(zCVisual*) CHOWA stringowa wersje z zCVob - stad
+        // kwalifikacja; zCVob::SetVisual(nazwa) buduje zCVisual z pliku i woła
+        // wirtualna wersje wskaznikowa (trafia z powrotem w oCItem).
+        if (!extension->OwnVisual.IsEmpty()) item->zCVob::SetVisual(extension->OwnVisual);
 
         item->max_hitp = static_cast<int>(extension->UId);
         item->flags |= extension->ExtraFlags_Base;

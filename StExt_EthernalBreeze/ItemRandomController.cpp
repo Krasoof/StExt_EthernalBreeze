@@ -70,7 +70,18 @@ namespace Gothic_II_Addon
 
 	inline void RollItemElementPerk(ItemRandomRollDescriptor& desc)
 	{
-		if (!desc.IsMagic || !desc.ItemExtensionData || !desc.ItemClassData) return;
+		if (!desc.ItemExtensionData || !desc.ItemClassData) return;
+
+		// Wymuszony zywiol (unikaty bossow): pomija szanse, flage MAGIC
+		// i losowanie - item DOSTAJE wskazany spell z moca jak legendary.
+		if (StExt_ForceItemElementSpell >= 0)
+		{
+			desc.ItemExtensionData->SetProperty((int)ItemProperty::SpellId, StExt_ForceItemElementSpell);
+			desc.ItemExtensionData->SetProperty((int)ItemProperty::SpellPower, desc.ItemPower + desc.ItemPower / 2);
+			return;
+		}
+
+		if (!desc.IsMagic) return;
 
 		int chance = 20;
 		zCPar_Symbol* chanceSym = parser->GetSymbol("STEXT_WEAPONELEMENTROLLCHANCE");

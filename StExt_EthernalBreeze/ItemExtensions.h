@@ -598,6 +598,9 @@ namespace Gothic_II_Addon
 		byte CraftFlags[ItemExtension_CraftFlags_Max];
 
 		zSTRING OwnName;
+		// Wymuszony mesh itemu (unikaty bossow) - pusty = wizual bazowej
+		// instancji. Archiwizowany keyed (BINARY_SAFE): stare sejwy czyste.
+		zSTRING OwnVisual;
 		zSTRING Preffix;
 		zSTRING Affix;
 		zSTRING Suffix;
@@ -914,6 +917,7 @@ namespace Gothic_II_Addon
 	// When >= 0, RollItemRank returns this value instead of rolling and the
 	// generated-item cache lookup is skipped (StExt_GenerateRankedItem external).
 	extern int StExt_ForceItemRank;
+	extern int StExt_ForceItemElementSpell;
 
 	void FindPlayerItems(const int itemClassId, Array<const oCItem*>& foundItems);
 	void FindPlayerItems(const Array<int>& itemClassIds, Array<const oCItem*>& foundItems);

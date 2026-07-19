@@ -286,7 +286,7 @@ namespace Gothic_II_Addon
 			static const int fElementPerHit  = parser->GetIndex("StExt_Tooltip_ElementPerHit");
 			static const int fBurstPower     = parser->GetIndex("StExt_Tooltip_BurstPower");
 			static const int fSealInterval   = parser->GetIndex("StExt_Tooltip_SealProcInterval");
-			static const int fSealProcDamage = parser->GetIndex("StExt_Tooltip_SealProcDamage");
+			static const int fSealProcDamage = parser->GetIndex("StExt_Tooltip_SealProcDamageL");	// wariant z poziomem pieczeci (+0.5%/lvl)
 			static const int fBleedTick      = parser->GetIndex("StExt_Tooltip_BleedTick");
 			static const int fPiercePermille = parser->GetIndex("StExt_Tooltip_PiercePermille");
 			const bool tooltipFuncsOk = (fElementPerHit != Invalid) && (fBurstPower != Invalid) && (fSealInterval != Invalid)
@@ -322,7 +322,7 @@ namespace Gothic_II_Addon
 			else if (sealSpell > 0 && sealEl >= 0 && tooltipFuncsOk)
 			{
 				const int interval = *(int*)parser->CallFunc(fSealInterval, sealSpell, sealPower);
-				const int procDmg  = *(int*)parser->CallFunc(fSealProcDamage, sealSpell, sealPower, weaponDmg, weaponFlags, usesMana);
+				const int procDmg  = *(int*)parser->CallFunc(fSealProcDamage, sealSpell, sealPower, sealLevel, weaponDmg, weaponFlags, usesMana);
 				CreateContentLine(zSTRING("Pieczec: ") + ElName[sealEl] + " [poz. " + Z(sealLevel) + "]", ItemTextColor_Green);
 				CreateContentLine(zSTRING("  czar co ") + Z(interval) + " cios(y)  |  ~" + Z(procDmg) + " obrazen", ItemTextColor_Green);
 			}
