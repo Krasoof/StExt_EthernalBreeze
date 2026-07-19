@@ -302,13 +302,18 @@ namespace Gothic_II_Addon
 	}
 
 	// Daedalus: func void StExt_Say(var string speaker, var string text)
-	// speaker zostaje w API dla zgodnosci - imie mowiacego pokazuje silnik.
+	// speaker: sentinel "HERO" = linia GRACZA (mowi bohater do NPC, dymek
+	// gracza, bez dubbingu - kanon: hero bez glosu). Kazda inna wartosc =
+	// linia NPC dialogu (imie mowiacego i tak pokazuje silnik).
 	int __cdecl StExt_Say_Script()
 	{
 		zSTRING text;    parser->GetParameter(text);		// ostatni param zdejmowany pierwszy
 		zSTRING speaker; parser->GetParameter(speaker);
 
 		oCNpc* npc = oCInformationManager::GetInformationManager().Npc;
+		zCVob* target = player;
+		if (speaker == zSTRING("HERO")) { target = npc; npc = player; }
+
 		if (!npc || text.IsEmpty())
 		{
 			StExt_Trace(zSTRING("StExt_Say: brak NPC dialogu - pomijam linie: ") + text);
@@ -319,7 +324,7 @@ namespace Gothic_II_Addon
 		if (ouName.IsEmpty()) return True;
 
 		oCMsgConversation* convMsg = new oCMsgConversation(oCMsgConversation::EV_OUTPUT, ouName);
-		convMsg->target = player;
+		convMsg->target = target;
 		npc->GetEM(FALSE)->OnMessage(convMsg, npc);
 		StExt_Trace(zSTRING("StExt_Say -> EV_OUTPUT [") + ouName + "]: " + text);
 		return True;
