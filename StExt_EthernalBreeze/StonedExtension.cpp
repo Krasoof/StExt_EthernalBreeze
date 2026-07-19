@@ -1815,7 +1815,7 @@ namespace Gothic_II_Addon
         int itmIndex; parser->GetParameter(itmIndex);
 
         zCPar_Symbol* sym = parser->GetSymbol(itmIndex);
-        ItemExtension* ext = sym ? ItemsExtensionData->Get(sym->name) : Null;
+        ItemExtension* ext = (sym && ItemsExtensionData) ? ItemsExtensionData->Get(sym->name) : Null;
         if (ext) ext->OwnName = name;
         parser->SetReturn(ext ? True : False);
         return True;
@@ -1830,7 +1830,7 @@ namespace Gothic_II_Addon
         int itmIndex; parser->GetParameter(itmIndex);
 
         zCPar_Symbol* sym = parser->GetSymbol(itmIndex);
-        ItemExtension* ext = sym ? ItemsExtensionData->Get(sym->name) : Null;
+        ItemExtension* ext = (sym && ItemsExtensionData) ? ItemsExtensionData->Get(sym->name) : Null;
         if (ext) ext->OwnVisual = visual;
         parser->SetReturn(ext ? True : False);
         return True;

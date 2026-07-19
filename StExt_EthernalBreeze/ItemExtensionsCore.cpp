@@ -833,6 +833,14 @@ namespace Gothic_II_Addon
     HOOK Hook_oCNpc_DoTakeVob PATCH(&oCNpc::DoTakeVob, &oCNpc::DoTakeVob_StExt);
     int oCNpc::DoTakeVob_StExt(zCVob* vob)
     {
+        // USE-AFTER-FREE FIX (crash "losowo przy wchodzeniu w nieodkryty
+        // teren"; log urywal sie miedzy "PutInInv OK" a "<< DoTakeVob OK"):
+        // oCNpcInventory::Insert dla DUPLIKATU niezalozonej broni (MultiSlot:
+        // ITM_CAT_NF/FF) SCALA stos - robi RemoveVob podnoszonego voba,
+        // a SafeRelease w DoTakeVob kasuje jego ostatnia referencje. Po
+        // powrocie z oryginalu 'item' moze wiec byc MARTWY. Cala praca hooka
+        // (trace + re-link ItemClassData + re-apply) dzieje sie PRZED
+        // oryginalem; po nim nie wolno dotknac ani 'item', ani 'vob'.
         oCItem* item = dynamic_cast<oCItem*>(vob);
         const bool trace = item && this && this->IsSelfPlayer();
         if (trace)
@@ -840,32 +848,25 @@ namespace Gothic_II_Addon
             const ItemExtension* ext = GetItemExtension(item);
             StExt_Trace(zSTRING(">> DoTakeVob inst='") + GetItemInstanceName(item)
                 + "' flags=" + Z(item->flags)
-                + " ext=" + Z((int)ext)
-                + (ext ? (zSTRING(" classData=") + Z((int)ext->ItemClassData)) : zSTRING("")));
+                + " ext=" + Z((int)ext));
         }
 
-        const int result = THISCALL(Hook_oCNpc_DoTakeVob)(vob);
-        if (trace) StExt_Trace("   .. oryginal PutInInv OK");
-
-        // Item juz w plecaku gracza. Sciezka z ziemi NIE przeszla przez InitByScript,
-        // wiec rozszerzenie moglo nie zostac domkniete. KLUCZOWE: wymuszamy
-        // Initialize() na rozszerzeniu - to re-linkuje ItemClassData (ext->ItemClassData
-        // = GetItemClassDescriptor(ItemClassID)). Wlasnie ten wskaznik bywal NULL i
-        // zabijal kazdy pozniejszy odczyt broni bossa. Re-link naprawia ZRODLO dla
-        // dowolnego deferred-czytacza, nie tylko dla ApplyItemExtension. Potem
-        // domykamy staty tak jak sciezka z okna.
+        // Sciezka z ziemi nie przechodzi przez InitByScript - domykamy
+        // rozszerzenie (Initialize re-linkuje ItemClassData; wlasnie ten
+        // NULL zabijal odczyty broni bossa) na ZYWYM itemie, zanim silnik
+        // go wchlonie lub scali ze stosem.
         if (item && this && this->IsSelfPlayer() && IsExtendedItem(item))
         {
             ItemExtension* extension = GetItemExtension(item);
             if (extension)
             {
-                if (trace) StExt_Trace(zSTRING("   .. Initialize (re-link ItemClassData) classData_przed=") + Z((int)extension->ItemClassData));
                 extension->Initialize();
-                if (trace) StExt_Trace(zSTRING("   .. classData_po=") + Z((int)extension->ItemClassData));
                 ApplyItemExtension(item, extension);
-                if (trace) StExt_Trace("   .. re-ApplyItemExtension OK");
+                if (trace) StExt_Trace("   .. re-Apply przed PutInInv OK");
             }
         }
+
+        const int result = THISCALL(Hook_oCNpc_DoTakeVob)(vob);
         if (trace) StExt_Trace("<< DoTakeVob OK");
         return result;
     }
