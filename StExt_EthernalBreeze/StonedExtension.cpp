@@ -1821,6 +1821,28 @@ namespace Gothic_II_Addon
         return True;
     }
 
+    // Wymuszony ZYWIOL wygenerowanego itemu (wybor gracza przy przekuciu
+    // u Kowala): ustawia na rozszerzeniu wlasciwosci elementu (SpellId +
+    // SpellPower), te same, ktore czyta StExt_GetItemSeal/GetItemSealPower.
+    // Wolac PRZED createinvitems - ApplyItemExtension nalozy je przy tworzeniu.
+    // Daedalus: StExt_SetGeneratedItemElement(itmIndex, spellId, power)
+    int __cdecl StExt_SetGeneratedItemElement()
+    {
+        int power; parser->GetParameter(power);
+        int spellId; parser->GetParameter(spellId);
+        int itmIndex; parser->GetParameter(itmIndex);
+
+        zCPar_Symbol* sym = parser->GetSymbol(itmIndex);
+        ItemExtension* ext = (sym && ItemsExtensionData) ? ItemsExtensionData->Get(sym->name) : Null;
+        if (ext)
+        {
+            ext->SetProperty((int)ItemProperty::SpellId, spellId);
+            ext->SetProperty((int)ItemProperty::SpellPower, power);
+        }
+        parser->SetReturn(ext ? True : False);
+        return True;
+    }
+
     // Wymuszony mesh wygenerowanego itemu (pole OwnVisual) - epicki wyglad
     // unikatow bossow. Wolac PRZED createinvitems, jak wyzej.
     // Daedalus: StExt_SetGeneratedItemVisual(itmIndex, visual)
@@ -3212,6 +3234,7 @@ namespace Gothic_II_Addon
         parser->DefineExternal("StExt_GenerateUniqueItem", StExt_GenerateUniqueItem, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_STRING, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_SetGeneratedItemName", StExt_SetGeneratedItemName, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_STRING, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_SetGeneratedItemVisual", StExt_SetGeneratedItemVisual, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_STRING, zPAR_TYPE_VOID);
+        parser->DefineExternal("StExt_SetGeneratedItemElement", StExt_SetGeneratedItemElement, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_GetRegularItem", StExt_GetRegularItem, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_FindTargetInRadius", StExt_FindTargetInRadius, zPAR_TYPE_INT, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_STRING, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_UseEnchantedItem", StExt_UseEnchantedItem, zPAR_TYPE_VOID, zPAR_TYPE_VOID);
