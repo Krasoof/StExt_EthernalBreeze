@@ -2080,6 +2080,21 @@ namespace Gothic_II_Addon
         return True;
     }
 
+    // Change item rank in place by delta (clamped 0..ItemRankMax in ChangeRank).
+    // Item MUST already have an extension (enchant/generate first). Returns the
+    // new rank, or Invalid if the item has no extension.
+    int __cdecl StExt_ChangeItemRank()
+    {
+        int delta;
+        parser->GetParameter(delta);
+        oCItem* itm = (oCItem*)parser->GetInstance();
+        ItemExtension* ext = itm ? GetItemExtension(itm) : Null;
+        if (!ext) { parser->SetReturn(Invalid); return True; }
+        ext->ChangeRank(delta);
+        parser->SetReturn(ext->Rank);
+        return True;
+    }
+
     int __cdecl StExt_GetItemSealPower()
     {
         oCItem* itm = (oCItem*)parser->GetInstance();
@@ -3298,6 +3313,7 @@ namespace Gothic_II_Addon
         parser->DefineExternal("StExt_ItemHasExtension", StExt_ItemHasExtension, zPAR_TYPE_INT, zPAR_TYPE_INSTANCE, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_GetItemProperty", StExt_GetItemProperty, zPAR_TYPE_INT, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_GetItemRank", StExt_GetItemRank, zPAR_TYPE_INT, zPAR_TYPE_INSTANCE, zPAR_TYPE_VOID);
+        parser->DefineExternal("StExt_ChangeItemRank", StExt_ChangeItemRank, zPAR_TYPE_INT, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_ScanLegendJewelry", StExt_ScanLegendJewelry, zPAR_TYPE_INT, zPAR_TYPE_INSTANCE, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_GetEquippedPerk", StExt_GetEquippedPerk, zPAR_TYPE_INT, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_EnchantItemInPlace", StExt_EnchantItemInPlace, zPAR_TYPE_INT, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_VOID);
