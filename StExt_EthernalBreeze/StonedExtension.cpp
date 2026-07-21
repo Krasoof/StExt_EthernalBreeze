@@ -2008,7 +2008,10 @@ namespace Gothic_II_Addon
                 if (ext && ext->Rank >= 5)
                 {
                     int bonus = ext->GetProperty(28);
-                    if (bonus < 41 || bonus > 48)
+                    // 41..48 = pula losowana. 49 = bonus UNIKATOWY, przypisywany
+                    // wprost ze skryptu (naszyjnik Belmonda) - musi przejsc przez
+                    // walidacje NIEtknietym, inaczej skan rerollowalby go co tick.
+                    if (bonus < 41 || bonus > 49)
                     {
                         bonus = 41 + (rand() % 8);
                         ext->SetProperty(28, bonus);
@@ -2019,6 +2022,50 @@ namespace Gothic_II_Addon
             it = it->GetNextInList();
         }
         parser->SetReturn(mask);
+        return True;
+    }
+
+    // Legendary ARMOR bonus (ids 21..23), rolled i UTRWALONY po stronie DLL.
+    // Wczesniej robil to skrypt (roll + StExt_SetItemProperty w sciezce obrazen),
+    // ale zapis nie chwytal i bonus losowal sie od nowa przy KAZDYM trafieniu -
+    // gracz widzial komunikat w kolko i skaczaca moc. Tutaj rozszerzenie jest
+    // modyfikowane bezposrednio przez wlasciciela, wiec zapis jest pewny.
+    // Daedalus: func int StExt_EnsureLegendArmorBonus(var c_npc npc)
+    //   zwraca 21..23 dla zalozonej legendarnej zbroi, albo 0 gdy brak.
+    int __cdecl StExt_EnsureLegendArmorBonus()
+    {
+        oCNpc* npc = (oCNpc*)parser->GetInstance();
+        if (!npc)
+        {
+            parser->SetReturn(0);
+            return False;
+        }
+
+        int result = 0;
+        zCListSort<oCItem>* it = npc->inventory2.GetContents();
+        while (it)
+        {
+            oCItem* pItem = it->GetData();
+            // tylko ZALOZONA zbroja (mainflag 64 = armor)
+            if (pItem && pItem->HasFlag(ITM_FLAG_ACTIVE) && HasFlag(pItem->mainflag, 64))
+            {
+                ItemExtension* ext = GetItemExtension(pItem);
+                if (ext && ext->Rank >= 5)
+                {
+                    int bonus = ext->GetProperty(28);
+                    if (bonus < 21 || bonus > 23)
+                    {
+                        bonus = 21 + (rand() % 3);
+                        ext->SetProperty(28, bonus);
+                    }
+                    result = bonus;
+                }
+                break;	// zalozona zbroja jest jedna
+            }
+            it = it->GetNextInList();
+        }
+
+        parser->SetReturn(result);
         return True;
     }
 
@@ -3315,6 +3362,7 @@ namespace Gothic_II_Addon
         parser->DefineExternal("StExt_GetItemRank", StExt_GetItemRank, zPAR_TYPE_INT, zPAR_TYPE_INSTANCE, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_ChangeItemRank", StExt_ChangeItemRank, zPAR_TYPE_INT, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_ScanLegendJewelry", StExt_ScanLegendJewelry, zPAR_TYPE_INT, zPAR_TYPE_INSTANCE, zPAR_TYPE_VOID);
+        parser->DefineExternal("StExt_EnsureLegendArmorBonus", StExt_EnsureLegendArmorBonus, zPAR_TYPE_INT, zPAR_TYPE_INSTANCE, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_GetEquippedPerk", StExt_GetEquippedPerk, zPAR_TYPE_INT, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_INT, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_EnchantItemInPlace", StExt_EnchantItemInPlace, zPAR_TYPE_INT, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_VOID);
         parser->DefineExternal("StExt_RerollItemInPlace", StExt_RerollItemInPlace, zPAR_TYPE_INT, zPAR_TYPE_INSTANCE, zPAR_TYPE_INT, zPAR_TYPE_VOID);

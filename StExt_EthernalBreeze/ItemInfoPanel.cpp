@@ -242,6 +242,9 @@ namespace Gothic_II_Addon
 				case 46: lgbName = "Wezel Czasu: 10% szansy na ogluszenie"; break;
 				case 47: lgbName = "Pas Berserkera: +20% obrazen ponizej 30% HP"; break;
 				case 48: lgbName = "Zelazna Skora: -10% obrazen wrecz"; break;
+				// 49 = bonus UNIKATOWY, nigdy nie losowany. Przypisywany wprost ze
+				// skryptu (naszyjnik Belmonda), dlatego skan bizuterii go NIE rerolluje.
+				case 49: lgbName = "Kolia Zrodzonego z Mroku: +10% obrazen demonom"; break;
 			}
 			if (lgbName)
 			{
