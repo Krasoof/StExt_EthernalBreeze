@@ -403,10 +403,28 @@ namespace Gothic_II_Addon
         UnArchiveAdditionalArmors(this);
     }
 
+    // Zapadka HP celow krucjaty (definicja: Damage.cpp). -1 = brak wpisu.
+    int StExt_WarRatchetGetFloor(void* npc);
+
     HOOK Hook_oCNpc_ProcessNpc PATCH(&oCNpc::ProcessNpc, &oCNpc::ProcessNpc_StExt);
     void oCNpc::ProcessNpc_StExt()
     {
         THISCALL(Hook_oCNpc_ProcessNpc)();
+
+        // KRUCJATA BELIARA: framework odnawia HP celow wojny CO KLATKE
+        // (log DH-WARHIT: lost=-2184 - w trakcie lancucha oddal dokladnie
+        // tyle, ile cios przed chwila zabral; pasek HP zawsze pelny).
+        // Zapadka z Damage.cpp musi wiec domykac sie tez per klatka, nie
+        // tylko przy ciosie - inaczej postep wojny jest niewidoczny.
+        // W tablicy zapadki sa WYLACZNIE cele wojny, wiec trafiony wpis
+        // jest jedyna potrzebna bramka; skan 10 wskaznikow = zero narzutu.
+        if (this)
+        {
+            const int warFloor = StExt_WarRatchetGetFloor(this);
+            if ((warFloor >= 0) && (this->attribute[NPC_ATR_HITPOINTS] > warFloor))
+                this->attribute[NPC_ATR_HITPOINTS] = warFloor;
+        }
+
         if (this && !this->IsDead())
         {
             // (parry detection moved to Damage.cpp OnDamage_StExt - the AI

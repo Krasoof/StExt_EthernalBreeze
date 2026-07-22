@@ -1041,6 +1041,15 @@ namespace Gothic_II_Addon
 			if (!WarHpRatchet[i].Npc) { WarHpRatchet[i].Npc = npc; WarHpRatchet[i].Hp = hp; return; }
 	}
 
+	// Publiczny odczyt zapadki dla klamry per-klatka w ProcessNpc_StExt
+	// (NpcController.cpp). -1 = NPC nie jest w tablicy (nie jest celem wojny
+	// albo nie dostal jeszcze zadnego ciosu).
+	int StExt_WarRatchetGetFloor(void* npc)
+	{
+		int* r = StExt_WarRatchetFind(npc);
+		return r ? *r : -1;
+	}
+
 	// KRUCJATA BELIARA: identyfikacja celow wojny po NAZWIE INSTANCJI (stabilna;
 	// oCNpc nie eksponuje pola id w API Union). Obstawa (BDT_9979x) zawsze;
 	// bazowi lowcy tylko przy aktywnym zleceniu (StExt_DH_Stage >= 1).
