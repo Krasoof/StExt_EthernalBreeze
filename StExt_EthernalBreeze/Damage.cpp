@@ -1009,6 +1009,28 @@ namespace Gothic_II_Addon
 		return True;		
 	}
 	
+	// ZAPADKA HP celow wojny: framework odnawia im zdrowie miedzy ciosami
+	// (log DH-WARHIT: 34396 -> 41036 w kilka sekund), wiec kazdy cios najpierw
+	// sciaga HP z powrotem do najnizszego osiagnietego poziomu - leczenie i
+	// regeneracja nie cofaja postepu wojny. Sesyjne; max 10 celow (5 bazowych
+	// lowcow + 5 obstawy), liniowy skan - zero narzutu.
+	struct StExt_WarRatchetEntry { void* Npc; int Hp; };
+	static StExt_WarRatchetEntry WarHpRatchet[10] = {};
+
+	static int* StExt_WarRatchetFind(void* npc)
+	{
+		for (int i = 0; i < 10; ++i)
+			if (WarHpRatchet[i].Npc == npc) return &WarHpRatchet[i].Hp;
+		return Null;
+	}
+	static void StExt_WarRatchetSet(void* npc, int hp)
+	{
+		for (int i = 0; i < 10; ++i)
+			if (WarHpRatchet[i].Npc == npc) { if (hp < WarHpRatchet[i].Hp) WarHpRatchet[i].Hp = hp; return; }
+		for (int i = 0; i < 10; ++i)
+			if (!WarHpRatchet[i].Npc) { WarHpRatchet[i].Npc = npc; WarHpRatchet[i].Hp = hp; return; }
+	}
+
 	// KRUCJATA BELIARA: identyfikacja celow wojny po NAZWIE INSTANCJI (stabilna;
 	// oCNpc nie eksponuje pola id w API Union). Obstawa (BDT_9979x) zawsze;
 	// bazowi lowcy tylko przy aktywnym zleceniu (StExt_DH_Stage >= 1).
@@ -1237,6 +1259,21 @@ namespace Gothic_II_Addon
 			// krwawi: minimum 1% maksymalnego HP na cios.
 			if (anyPhys && warPhysExpected <= 0)
 				warPhysExpected = this->attribute[NPC_ATR_HITPOINTSMAX] / 100 + 1;
+
+			if (warPhysExpected > 0)
+			{
+				// Mistrzowie gildii maja basen bossa (log: Angel ~41k HP) przy
+				// pelnej kradziezy obrazen przez framework - cios gracza sciaga
+				// dodatkowo 4% maks. HP (kanon: procenty, nie flaty), inaczej
+				// wojna na wyczerpanie jest nie do wygrania.
+				warPhysExpected += this->attribute[NPC_ATR_HITPOINTSMAX] / 25;
+
+				// Zapadka: najpierw sciagnij HP do najnizszego osiagnietego
+				// poziomu - dopiero potem liczy sie ten cios.
+				int* warRatchet = StExt_WarRatchetFind(this);
+				if (warRatchet && (*warRatchet < this->attribute[NPC_ATR_HITPOINTS]))
+					this->attribute[NPC_ATR_HITPOINTS] = *warRatchet;
+			}
 		}
 
 		// Original damage handler
@@ -1304,6 +1341,8 @@ namespace Gothic_II_Addon
 				this->attribute[NPC_ATR_HITPOINTS] = newHp;
 				if (newHp <= 0) this->DoDie(damageMeta.Attacker);
 			}
+			// Zapadka zapamietuje najnizszy osiagniety poziom HP.
+			StExt_WarRatchetSet(this, this->attribute[NPC_ATR_HITPOINTS]);
 		}
 
 
