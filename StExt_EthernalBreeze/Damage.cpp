@@ -1118,11 +1118,37 @@ namespace Gothic_II_Addon
 			if (e.DeadFrames < 60) continue;
 
 			zCPar_Symbol* inst = parser->GetSymbol(npc->instanz);
-			if (inst && (inst->name == "DH_MAINNPC"))
+
+			// Trwaly slad po zabitym lowcu: bitmaska w parserze. EnsureHunters
+			// (ModController.d) czyta ja i NIE respawnuje straconych - bez tego
+			// despawn (RemoveVob) + respawn tworzyly petle ("spawnuje w kolo
+			// dwoch najemnikow"). Bity: 1 Main, 2 Severin, 4 Viland, 8 Merc1,
+			// 16 Merc2. Osobny StExt_DH_MainNpcDead zostaje dla warunku raportu.
+			if (inst)
 			{
-				static int deadSymIdx = -2;
-				if (deadSymIdx == -2) deadSymIdx = parser->GetIndex("StExt_DH_MainNpcDead");
-				if (deadSymIdx > 0) parser->GetSymbol(deadSymIdx)->SetValue(1, 0);
+				int bit = 0;
+				if (inst->name == "DH_MAINNPC")              bit = 1;
+				else if (inst->name == "DH_NPCSEVERIN")      bit = 2;
+				else if (inst->name == "DH_VILANDNPC")       bit = 4;
+				else if (inst->name == "DH_SLD_MERCENARY_01") bit = 8;
+				else if (inst->name == "DH_SLD_MERCENARY_02") bit = 16;
+				if (bit)
+				{
+					static int maskSymIdx = -2;
+					if (maskSymIdx == -2) maskSymIdx = parser->GetIndex("StExt_DH_KilledMask");
+					if (maskSymIdx > 0)
+					{
+						zCPar_Symbol* mask = parser->GetSymbol(maskSymIdx);
+						int cur = 0; mask->GetValue(cur, 0);
+						mask->SetValue(cur | bit, 0);
+					}
+				}
+				if (inst->name == "DH_MAINNPC")
+				{
+					static int deadSymIdx = -2;
+					if (deadSymIdx == -2) deadSymIdx = parser->GetIndex("StExt_DH_MainNpcDead");
+					if (deadSymIdx > 0) parser->GetSymbol(deadSymIdx)->SetValue(1, 0);
+				}
 			}
 
 			// Mroczny blysk w miejscu ciala - zabranie wyglada jak rytual
