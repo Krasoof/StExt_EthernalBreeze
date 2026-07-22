@@ -1038,7 +1038,19 @@ namespace Gothic_II_Addon
 		for (int i = 0; i < 10; ++i)
 			if (WarHpRatchet[i].Npc == npc) { if (hp < WarHpRatchet[i].Hp) WarHpRatchet[i].Hp = hp; return; }
 		for (int i = 0; i < 10; ++i)
-			if (!WarHpRatchet[i].Npc) { WarHpRatchet[i].Npc = npc; WarHpRatchet[i].Hp = hp; return; }
+			if (!WarHpRatchet[i].Npc)
+			{
+				// Slot moze byc PO DESPAWNIE poprzedniego celu (Npc=Null, ale
+				// Executed=1, DeadFrames=-1). Bez pelnego resetu nowy cel
+				// dziedziczyl "wykonany wyrok" i egzekucja nigdy nie ruszala
+				// (zgloszenie: "jak zabije najpierw Belmonda, potem Angela -
+				// to nie [znika]"). Kolejnosc zabijania nie moze miec znaczenia.
+				WarHpRatchet[i].Npc = npc;
+				WarHpRatchet[i].Hp = hp;
+				WarHpRatchet[i].Executed = 0;
+				WarHpRatchet[i].DeadFrames = 0;
+				return;
+			}
 	}
 
 	// Publiczny odczyt zapadki dla klamry per-klatka w ProcessNpc_StExt
