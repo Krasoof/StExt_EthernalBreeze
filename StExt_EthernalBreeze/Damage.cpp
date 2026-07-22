@@ -1024,7 +1024,7 @@ namespace Gothic_II_Addon
 	// konstrukcji odporna na KAZDE zrodlo restore, bo dziala w momencie
 	// ciosu. Z nia Angel padl w kilka hitow (potwierdzone na zywo).
 	// Sesyjna; max 10 celow (5 bazowych lowcow + 5 obstawy), liniowy skan.
-	struct StExt_WarRatchetEntry { void* Npc; int Hp; int Executed; };
+	struct StExt_WarRatchetEntry { void* Npc; int Hp; int Executed; int DeadFrames; };
 	static StExt_WarRatchetEntry WarHpRatchet[10] = {};
 
 	static int* StExt_WarRatchetFind(void* npc)
@@ -1079,6 +1079,42 @@ namespace Gothic_II_Addon
 		for (int i = 0; i < 10; ++i)
 			if (WarHpRatchet[i].Npc == npc) return (WarHpRatchet[i].Executed != 0) && (WarHpRatchet[i].Hp <= 0);
 		return false;
+	}
+
+	// SPRZATANIE PO EGZEKUCJI (wolane z Game_Loop, poza iteracja vobow).
+	// Framework wskrzesza nawet zwloki - stan AI + zapisy HP wprost do
+	// pamieci; blokada obu kanalow zapisu nie wystarczyla, a przeciaganie
+	// liny konczylo sie petla animacji smierci. Rozwiazanie ostateczne:
+	// ~4 s po egzekucji cialo jest usuwane ze swiata DOKLADNIE ta sciezka,
+	// ktorej uzywa silnikowy spawn manager (oSpawn.cpp:633:
+	// ogame->GetWorld()->RemoveVob(npc)). Nie da sie wskrzesic czegos,
+	// czego nie ma. Quest nie potrzebuje ciala: egzekucja DH_MAINNPC
+	// ustawia flage StExt_DH_MainNpcDead (GlobalVars.d), a warunek raportu
+	// u Nauczyciela akceptuje ja rownolegle z npc_isdead.
+	void StExt_WarProcessExecutions()
+	{
+		for (int i = 0; i < 10; ++i)
+		{
+			StExt_WarRatchetEntry& e = WarHpRatchet[i];
+			if (!e.Npc || !e.Executed || (e.Hp > 0) || (e.DeadFrames < 0)) continue;
+			oCNpc* npc = (oCNpc*)e.Npc;
+			if (!IsNpcPointerValid(npc)) { e.DeadFrames = -1; e.Npc = Null; continue; }
+
+			e.DeadFrames++;
+			if (e.DeadFrames < 240) continue;
+
+			zCPar_Symbol* inst = parser->GetSymbol(npc->instanz);
+			if (inst && (inst->name == "DH_MAINNPC"))
+			{
+				static int deadSymIdx = -2;
+				if (deadSymIdx == -2) deadSymIdx = parser->GetIndex("StExt_DH_MainNpcDead");
+				if (deadSymIdx > 0) parser->GetSymbol(deadSymIdx)->SetValue(1, 0);
+			}
+			StExt_Trace(zSTRING("DH-DESPAWN ") + (inst ? inst->name : zSTRING("?")) + " - cialo zabiera Beliar");
+			ogame->GetGameWorld()->RemoveVob(npc);
+			e.DeadFrames = -1;	// wpis zamkniety
+			e.Npc = Null;		// wskaznik przestal byc nasz
+		}
 	}
 
 	// KRUCJATA BELIARA: identyfikacja celow wojny po NAZWIE INSTANCJI (stabilna;

@@ -35,6 +35,9 @@ namespace Gothic_II_Addon
         DEBUG_MSG("");
     }
 
+    // Sprzatanie egzekucji krucjaty (Damage.cpp) - musi biec poza iteracja vobow.
+    void StExt_WarProcessExecutions();
+
     // Game Loop
     void Game_PreLoop() { StatsUncaperLoop(); }
 
@@ -44,6 +47,7 @@ namespace Gothic_II_Addon
         {
             UpdateUiStatus();
             ProcessPendingDamages();
+            StExt_WarProcessExecutions();
             StonedExtension_Loop();
             TimedEffectsLoop();
             StExt_FloatingDamage_Loop();
