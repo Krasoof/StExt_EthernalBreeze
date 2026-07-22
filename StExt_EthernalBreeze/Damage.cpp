@@ -1100,8 +1100,10 @@ namespace Gothic_II_Addon
 			oCNpc* npc = (oCNpc*)e.Npc;
 			if (!IsNpcPointerValid(npc)) { e.DeadFrames = -1; e.Npc = Null; continue; }
 
+			// ~1 s: cialo zdazy upasc, a "stepowanie" (szarpanie trupem przez
+			// framework vs nasza klamra) ledwo zdazy sie pokazac.
 			e.DeadFrames++;
-			if (e.DeadFrames < 240) continue;
+			if (e.DeadFrames < 60) continue;
 
 			zCPar_Symbol* inst = parser->GetSymbol(npc->instanz);
 			if (inst && (inst->name == "DH_MAINNPC"))
@@ -1110,6 +1112,19 @@ namespace Gothic_II_Addon
 				if (deadSymIdx == -2) deadSymIdx = parser->GetIndex("StExt_DH_MainNpcDead");
 				if (deadSymIdx > 0) parser->GetSymbol(deadSymIdx)->SetValue(1, 0);
 			}
+
+			// Mroczny blysk w miejscu ciala - zabranie wyglada jak rytual
+			// Beliara, nie glitch. Skrypt: StExt_DH_OnExecuteDespawn
+			// (StExt_Self = cialo), wolany PO NAZWIE, wiec brak = no-op.
+			static int despawnFxIdx = -2;
+			if (despawnFxIdx == -2) despawnFxIdx = parser->GetIndex("StExt_DH_OnExecuteDespawn");
+			if ((despawnFxIdx > 0) && (StExt_ModSelf_SymId != Invalid))
+			{
+				parser->SetInstance(StExt_ModSelf_SymId, npc);
+				parser->CallFunc(despawnFxIdx);
+				parser->SetInstance(StExt_ModSelf_SymId, Null);
+			}
+
 			StExt_Trace(zSTRING("DH-DESPAWN ") + (inst ? inst->name : zSTRING("?")) + " - cialo zabiera Beliar");
 			ogame->GetGameWorld()->RemoveVob(npc);
 			e.DeadFrames = -1;	// wpis zamkniety
