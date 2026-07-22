@@ -1024,7 +1024,7 @@ namespace Gothic_II_Addon
 	// konstrukcji odporna na KAZDE zrodlo restore, bo dziala w momencie
 	// ciosu. Z nia Angel padl w kilka hitow (potwierdzone na zywo).
 	// Sesyjna; max 10 celow (5 bazowych lowcow + 5 obstawy), liniowy skan.
-	struct StExt_WarRatchetEntry { void* Npc; int Hp; };
+	struct StExt_WarRatchetEntry { void* Npc; int Hp; int Executed; };
 	static StExt_WarRatchetEntry WarHpRatchet[10] = {};
 
 	static int* StExt_WarRatchetFind(void* npc)
@@ -1050,27 +1050,49 @@ namespace Gothic_II_Addon
 		return r ? *r : -1;
 	}
 
-	// KRUCJATA BELIARA: identyfikacja celow wojny po NAZWIE INSTANCJI (stabilna;
-	// oCNpc nie eksponuje pola id w API Union). Obstawa (BDT_9979x) zawsze;
-	// bazowi lowcy tylko przy aktywnym zleceniu (StExt_DH_Stage >= 1).
-	static bool StExt_IsDhWarTargetNpc(oCNpc* npc)
+	// Jednorazowa "zgoda na egzekucje": true tylko raz, gdy podloga zapadki
+	// osiagnela zero i DoDie nie zostal jeszcze wykonany dla tego NPC.
+	// Konsumowana zarowno przez OnDamage (smierc w walce), jak i przez
+	// ProcessNpc (egzekucja POZA kontekstem obrazen - jak konsolowy kill,
+	// jedyna sciezka smierci potwierdzona u chronionych NPC frameworka).
+	bool StExt_WarRatchetExecuteDue(void* npc)
 	{
-		if (!npc) return false;
+		for (int i = 0; i < 10; ++i)
+		{
+			if (WarHpRatchet[i].Npc != npc) continue;
+			if (WarHpRatchet[i].Hp > 0) return false;
+			if (WarHpRatchet[i].Executed) return false;
+			WarHpRatchet[i].Executed = 1;
+			return true;
+		}
+		return false;
+	}
+
+	// KRUCJATA BELIARA: identyfikacja celow wojny po NAZWIE INSTANCJI (stabilna;
+	// oCNpc nie eksponuje pola id w API Union). Zwraca rodzaj celu:
+	//   0 = nie jest celem wojny
+	//   1 = nasza obstawa (BDT_9979x) - zabijalna normalnymi obrazeniami
+	//   2 = bazowy lowca chroniony przez framework (DH_*) - EGZEKUCJA na cios
+	// Bazowi lowcy licza sie tylko przy aktywnym zleceniu (StExt_DH_Stage >= 1).
+	static int StExt_IsDhWarTargetNpc(oCNpc* npc)
+	{
+		if (!npc) return 0;
 		zCPar_Symbol* inst = parser->GetSymbol(npc->instanz);
-		if (!inst) return false;
+		if (!inst) return 0;
 		const zSTRING& nm = inst->name;
 		if (nm == "BDT_99790_LOWCADEMONOW1" || nm == "BDT_99791_LOWCADEMONOW2"
 			|| nm == "BDT_99792_LOWCADEMONOW3" || nm == "BDT_99793_LOWCADEMONOW4"
-			|| nm == "BDT_99794_BELMOND") return true;
+			|| nm == "BDT_99794_BELMOND") return 1;
 
 		static int stageIdx = -2;
 		if (stageIdx == -2) stageIdx = parser->GetIndex("StExt_DH_Stage");
-		if (stageIdx <= 0) return false;
+		if (stageIdx <= 0) return 0;
 		zCPar_Symbol* stage = parser->GetSymbol(stageIdx);
-		if (!stage || stage->single_intdata < 1) return false;
+		if (!stage || stage->single_intdata < 1) return 0;
 
-		return (nm == "DH_MAINNPC") || (nm == "DH_NPCSEVERIN") || (nm == "DH_VILANDNPC")
-			|| (nm == "DH_SLD_MERCENARY_01") || (nm == "DH_SLD_MERCENARY_02");
+		if ((nm == "DH_MAINNPC") || (nm == "DH_NPCSEVERIN") || (nm == "DH_VILANDNPC")
+			|| (nm == "DH_SLD_MERCENARY_01") || (nm == "DH_SLD_MERCENARY_02")) return 2;
+		return 0;
 	}
 
 	HOOK Hook_oCNpc_OnDamage PATCH (&oCNpc::OnDamage, &oCNpc::OnDamage_StExt);
@@ -1257,10 +1279,24 @@ namespace Gothic_II_Addon
 		// liczenia); gdy wyzerowal - dokladamy calosc. Smierc domykamy DoDie,
 		// sciezka potwierdzona w grze przez Marvin-kill.
 		int warPhysExpected = 0;
-		const bool warTarget = damageMeta.Attacker && damageMeta.Attacker->IsSelfPlayer()
-			&& !this->IsSelfPlayer() && StExt_IsDhWarTargetNpc(this);
+		const int warKind = (damageMeta.Attacker && damageMeta.Attacker->IsSelfPlayer()
+			&& !this->IsSelfPlayer()) ? StExt_IsDhWarTargetNpc(this) : 0;
+		const bool warTarget = (warKind != 0);
 		if (warTarget && IsDamageDescriptorSane(desc))
 		{
+			// OSTATECZNOSC (zaakceptowana przez usera): bazowi lowcy chronieni
+			// przez framework (warKind == 2) po KAZDYM zarejestrowanym ciosie
+			// gracza dostaja podloge zapadki = 0. Egzekucje wykonuje ProcessNpc
+			// POZA kontekstem obrazen (jak konsolowy kill - jedyna sciezka
+			// smierci, ktora u nich dziala; wewnatrz OnDamage framework potrafi
+			// wyciszyc kolejne eventy po pierwszym "nielegalnym" spadku HP -
+			// log: kazda sesja rejestrowala DOKLADNIE jeden zamach).
+			if (warKind == 2)
+			{
+				StExt_WarRatchetSet(this, 0);
+				StExt_Trace(zSTRING("DH-EXECUTE ") + parser->GetSymbol(this->instanz)->name
+					+ " - cios gracza, podloga=0, egzekucja w ProcessNpc");
+			}
 			static const int warPhysIdx[3] = { oEDamageIndex_Blunt, oEDamageIndex_Edge, oEDamageIndex_Point };
 			bool anyPhys = false;
 			for (int k = 0; k < 3; ++k)
@@ -1359,10 +1395,12 @@ namespace Gothic_II_Addon
 					+ " exp=" + Z(warPhysExpected) + " lost=" + Z(warLost)
 					+ " hp=" + Z(this->attribute[NPC_ATR_HITPOINTS]) + " -> " + Z(newHp));
 				this->attribute[NPC_ATR_HITPOINTS] = newHp;
-				if (newHp <= 0) this->DoDie(damageMeta.Attacker);
 			}
-			// Zapadka zapamietuje najnizszy osiagniety poziom HP.
+			// Zapadka zapamietuje najnizszy osiagniety poziom HP; smierc
+			// dedupowana przez ExecuteDue (druga sciezka: ProcessNpc).
 			StExt_WarRatchetSet(this, this->attribute[NPC_ATR_HITPOINTS]);
+			if ((this->attribute[NPC_ATR_HITPOINTS] <= 0) && StExt_WarRatchetExecuteDue(this))
+				this->DoDie(damageMeta.Attacker);
 		}
 
 

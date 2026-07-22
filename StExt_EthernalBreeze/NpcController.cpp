@@ -405,6 +405,8 @@ namespace Gothic_II_Addon
 
     // Zapadka HP celow krucjaty (definicja: Damage.cpp). -1 = brak wpisu.
     int StExt_WarRatchetGetFloor(void* npc);
+    // Jednorazowa zgoda na egzekucje celu wojny (podloga 0, DoDie jeszcze nie byl).
+    bool StExt_WarRatchetExecuteDue(void* npc);
 
     HOOK Hook_oCNpc_ProcessNpc PATCH(&oCNpc::ProcessNpc, &oCNpc::ProcessNpc_StExt);
     void oCNpc::ProcessNpc_StExt()
@@ -423,6 +425,17 @@ namespace Gothic_II_Addon
             const int warFloor = StExt_WarRatchetGetFloor(this);
             if ((warFloor >= 0) && (this->attribute[NPC_ATR_HITPOINTS] > warFloor))
                 this->attribute[NPC_ATR_HITPOINTS] = warFloor;
+
+            // EGZEKUCJA poza kontekstem obrazen (jak konsolowy kill - jedyna
+            // sciezka smierci potwierdzona u chronionych NPC frameworka).
+            // Wewnatrz OnDamage framework wycisza kolejne eventy po pierwszym
+            // "nielegalnym" spadku HP, wiec smierc wykonana tam nie domyka sie.
+            if ((warFloor == 0) && StExt_WarRatchetExecuteDue(this))
+            {
+                this->attribute[NPC_ATR_HITPOINTS] = 0;
+                StExt_Trace(zSTRING("DH-DODIE egzekucja celu wojny (ProcessNpc)"));
+                this->DoDie(oCNpc::player);
+            }
         }
 
         if (this && !this->IsDead())
