@@ -1357,7 +1357,12 @@ namespace Gothic_II_Addon
 		int warPhysExpected = 0;
 		const int warKind = (damageMeta.Attacker && damageMeta.Attacker->IsSelfPlayer()
 			&& !this->IsSelfPlayer()) ? StExt_IsDhWarTargetNpc(this) : 0;
-		const bool warTarget = (warKind != 0);
+		// TYLKO rodzaj 2 (bazowi lowcy chronieni przez framework) wchodzi w
+		// maszynerie wojny. Obstawa (rodzaj 1) umiera NORMALNIE i jej ciala
+		// leza do zlupienia - wczesniej wpadala w despawn i Beliar zabieral
+		// zwloki Belmonda RAZEM z legendarna Kolia w ekwipunku (pytanie usera
+		// "a innych to nie spotka?" wylapalo dokladnie ten blad).
+		const bool warTarget = (warKind == 2);
 		if (warTarget && IsDamageDescriptorSane(desc))
 		{
 			// OSTATECZNOSC (zaakceptowana przez usera): bazowi lowcy chronieni
