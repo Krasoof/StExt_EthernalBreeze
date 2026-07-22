@@ -1009,6 +1009,38 @@ namespace Gothic_II_Addon
 		return True;		
 	}
 	
+	// ZAPADKA HP celow wojny - NIE USUWAC, historia bledu ponizej.
+	//
+	// Dowod z logu (build bez zapadki): DH-WARHIT exp=210 lost=0
+	// hp=147199 -> 146989, OSIEM identycznych linii z rzedu - HP wraca do
+	// co do punktu tej samej wartosci przed kazdym ciosem. To nie tarcza
+	// energii moda (ta hipoteza raz juz skasowala te zapadke - blednie) ani
+	// stopniowa regeneracja: to restore do deterministycznego snapshotu.
+	// Zrodlo: StExt_CalculateDiff() (ModController.d) co tick karmi framework
+	// NB swiezym rx_monsterhpratio, a NB w sposob ciagly synchronizuje HP
+	// wrogow z wyliczona pula (skladnik dzienny wzoru => miedzy sesjami pula
+	// rosnie, u Angela 41k -> 147k). Walka ze zrodlem = zmiana globalnego
+	// skalowania trudnosci wszystkich wrogow; zapadka jest punktowa i z
+	// konstrukcji odporna na KAZDE zrodlo restore, bo dziala w momencie
+	// ciosu. Z nia Angel padl w kilka hitow (potwierdzone na zywo).
+	// Sesyjna; max 10 celow (5 bazowych lowcow + 5 obstawy), liniowy skan.
+	struct StExt_WarRatchetEntry { void* Npc; int Hp; };
+	static StExt_WarRatchetEntry WarHpRatchet[10] = {};
+
+	static int* StExt_WarRatchetFind(void* npc)
+	{
+		for (int i = 0; i < 10; ++i)
+			if (WarHpRatchet[i].Npc == npc) return &WarHpRatchet[i].Hp;
+		return Null;
+	}
+	static void StExt_WarRatchetSet(void* npc, int hp)
+	{
+		for (int i = 0; i < 10; ++i)
+			if (WarHpRatchet[i].Npc == npc) { if (hp < WarHpRatchet[i].Hp) WarHpRatchet[i].Hp = hp; return; }
+		for (int i = 0; i < 10; ++i)
+			if (!WarHpRatchet[i].Npc) { WarHpRatchet[i].Npc = npc; WarHpRatchet[i].Hp = hp; return; }
+	}
+
 	// KRUCJATA BELIARA: identyfikacja celow wojny po NAZWIE INSTANCJI (stabilna;
 	// oCNpc nie eksponuje pola id w API Union). Obstawa (BDT_9979x) zawsze;
 	// bazowi lowcy tylko przy aktywnym zleceniu (StExt_DH_Stage >= 1).
@@ -1235,11 +1267,24 @@ namespace Gothic_II_Addon
 			}
 			// Cios fizyczny byl, ale pancerz zjadl go w calosci - cel wojny i tak
 			// krwawi: minimum 1% maksymalnego HP na cios.
-			// (Bylo tu tez zapadkowanie HP + 4% maxHP na cios - WYCOFANE na
-			// zadanie usera: "odrastanie" z logu to zwykla tarcza energii moda,
-			// a sama egzekucja ponizej wystarczyla, by Angel padl w kilka hitow.)
 			if (anyPhys && warPhysExpected <= 0)
 				warPhysExpected = this->attribute[NPC_ATR_HITPOINTSMAX] / 100 + 1;
+
+			if (warPhysExpected > 0)
+			{
+				// Skalowanie wrogow NB pompuje mistrzowi gildii pule bossa
+				// (log: 41k, sesje pozniej 147k - skladnik dzienny wzoru), a
+				// restore i tak zeruje postep miedzy ciosami. Cios gracza
+				// sciaga wiec dodatkowo 4% maks. HP (kanon: procenty, nie
+				// flaty) - pula pada w kilkanascie zamachow zamiast nigdy.
+				warPhysExpected += this->attribute[NPC_ATR_HITPOINTSMAX] / 25;
+
+				// Zapadka: najpierw sciagnij HP do najnizszego osiagnietego
+				// poziomu - restore frameworka przestaje cofac postep wojny.
+				int* warRatchet = StExt_WarRatchetFind(this);
+				if (warRatchet && (*warRatchet < this->attribute[NPC_ATR_HITPOINTS]))
+					this->attribute[NPC_ATR_HITPOINTS] = *warRatchet;
+			}
 		}
 
 		// Original damage handler
@@ -1307,6 +1352,8 @@ namespace Gothic_II_Addon
 				this->attribute[NPC_ATR_HITPOINTS] = newHp;
 				if (newHp <= 0) this->DoDie(damageMeta.Attacker);
 			}
+			// Zapadka zapamietuje najnizszy osiagniety poziom HP.
+			StExt_WarRatchetSet(this, this->attribute[NPC_ATR_HITPOINTS]);
 		}
 
 
