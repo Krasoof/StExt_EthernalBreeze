@@ -13,6 +13,7 @@ void oCNpc::OnDamage_Sound_StExt(oSDamageDescriptor& desc);
 void oCNpc::DisplayCannotUse_StExt();
 
 void oCNpc::ChangeAttribute_StExt(int attribute, int value);
+void oCNpc::SetAttribute_StExt(int attribute, int value);
 
 
 //void oCNpc::Archive_StExt(zCArchiver& ar);

@@ -1068,6 +1068,19 @@ namespace Gothic_II_Addon
 		return false;
 	}
 
+	// Czy cel wojny zostal juz stracony (egzekucja wykonana, podloga 0).
+	// Uzywane do blokowania "leczenia zwlok": framework probowal wskrzeszac
+	// straconych (zgloszenie: "padaja w petli - ruszaja sie, ale sa martwi"),
+	// bo klamra per-klatka przybijala HP z powrotem i animacja smierci
+	// restartowala w kolko. Zamiast przeciagac line, ucinamy dodatnie zmiany
+	// HP zwlok u zrodla (ChangeAttribute/SetAttribute).
+	bool StExt_WarRatchetIsExecuted(void* npc)
+	{
+		for (int i = 0; i < 10; ++i)
+			if (WarHpRatchet[i].Npc == npc) return (WarHpRatchet[i].Executed != 0) && (WarHpRatchet[i].Hp <= 0);
+		return false;
+	}
+
 	// KRUCJATA BELIARA: identyfikacja celow wojny po NAZWIE INSTANCJI (stabilna;
 	// oCNpc nie eksponuje pola id w API Union). Zwraca rodzaj celu:
 	//   0 = nie jest celem wojny
@@ -1440,12 +1453,29 @@ namespace Gothic_II_Addon
 	}
 
 
+	// Drugi kanal zapisu HP (framework moze pisac wprost przez SetAttribute,
+	// z pominieciem ChangeAttribute) - ta sama zasada: zwloki straconych
+	// celow wojny nie przyjmuja leczenia.
+	HOOK ivk_oCNpc_SetAttribute PATCH(&oCNpc::SetAttribute, &oCNpc::SetAttribute_StExt);
+	void oCNpc::SetAttribute_StExt(int attrIndex, int value)
+	{
+		if ((attrIndex == NPC_ATR_HITPOINTS) && (value > 0) && StExt_WarRatchetIsExecuted(this))
+			return;
+		THISCALL(ivk_oCNpc_SetAttribute)(attrIndex, value);
+	}
+
 	HOOK ivk_oCNpc_ChangeAttribute PATCH(&oCNpc::ChangeAttribute, &oCNpc::ChangeAttribute_StExt);
 
 
 	void oCNpc::ChangeAttribute_StExt(int attrIndex, int value)
 	{
 		static int dontKillcheckFuncIndex = parser->GetIndex("StExt_DontKillByExtraDamage_Engine");
+
+		// Zwloki straconych celow wojny nie przyjmuja leczenia - framework
+		// probowal je wskrzeszac i klamra per-klatka robila z tego petle
+		// animacji smierci. Egzekucja jest ostateczna.
+		if ((attrIndex == NPC_ATR_HITPOINTS) && (value > 0) && StExt_WarRatchetIsExecuted(this))
+			return;
 
 		if ((attrIndex == NPC_ATR_HITPOINTS) && (value < 0))
 		{
