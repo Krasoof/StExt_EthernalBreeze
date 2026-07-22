@@ -3,7 +3,7 @@
 // User API for oCItemContainer
 // Add your methods here
 
-//void oCItemContainer::Draw_StExt();
+void oCItemContainer::Draw_StExt();
 
 void oCItemContainer::DrawItemInfo_StExt(oCItem* item, zCWorld* world);
 

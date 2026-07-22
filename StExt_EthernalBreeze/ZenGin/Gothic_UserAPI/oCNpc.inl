@@ -71,3 +71,5 @@ int oCNpc::EV_Parade_StExt(oCMsgAttack* msg);
 int oCNpc::EV_ShootAt_StExt(oCMsgAttack* msg);
 int oCNpc::EV_Defend_StExt(oCMsgAttack* msg);
 
+int oCNpc::DoTakeVob_StExt(zCVob* vob);
+

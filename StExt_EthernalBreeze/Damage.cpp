@@ -1009,6 +1009,29 @@ namespace Gothic_II_Addon
 		return True;		
 	}
 	
+	// KRUCJATA BELIARA: identyfikacja celow wojny po NAZWIE INSTANCJI (stabilna;
+	// oCNpc nie eksponuje pola id w API Union). Obstawa (BDT_9979x) zawsze;
+	// bazowi lowcy tylko przy aktywnym zleceniu (StExt_DH_Stage >= 1).
+	static bool StExt_IsDhWarTargetNpc(oCNpc* npc)
+	{
+		if (!npc) return false;
+		zCPar_Symbol* inst = parser->GetSymbol(npc->instanz);
+		if (!inst) return false;
+		const zSTRING& nm = inst->name;
+		if (nm == "BDT_99790_LOWCADEMONOW1" || nm == "BDT_99791_LOWCADEMONOW2"
+			|| nm == "BDT_99792_LOWCADEMONOW3" || nm == "BDT_99793_LOWCADEMONOW4"
+			|| nm == "BDT_99794_BELMOND") return true;
+
+		static int stageIdx = -2;
+		if (stageIdx == -2) stageIdx = parser->GetIndex("StExt_DH_Stage");
+		if (stageIdx <= 0) return false;
+		zCPar_Symbol* stage = parser->GetSymbol(stageIdx);
+		if (!stage || stage->single_intdata < 1) return false;
+
+		return (nm == "DH_MAINNPC") || (nm == "DH_NPCSEVERIN") || (nm == "DH_VILANDNPC")
+			|| (nm == "DH_SLD_MERCENARY_01") || (nm == "DH_SLD_MERCENARY_02");
+	}
+
 	HOOK Hook_oCNpc_OnDamage PATCH (&oCNpc::OnDamage, &oCNpc::OnDamage_StExt);
 	void oCNpc::OnDamage_StExt(oSDamageDescriptor& desc)
 	{
@@ -1182,6 +1205,40 @@ namespace Gothic_II_Addon
 			}
 		}
 
+		// KRUCJATA BELIARA - egzekucja obrazen dla celow wojny (saga Angela).
+		// Framework potrafi CALKOWICIE wyzerowac fizyczne obrazenia fabularnych
+		// NPC zanim silnik dotknie HP (immortalByProtection z ujemnych protekcji
+		// / wlasna brama w lancuchu OnDamage) - wtedy zaden nasz hook nizej
+		// (ChangeAttribute) nie widzi ciosu, a cel "trzesie sie" zamiast ginac.
+		// Liczymy PRZED oryginalem, ile fizycznych obrazen powinno wejsc, a PO
+		// oryginale dokladamy brakujaca roznice. Odporne na kazda teorie warstwy:
+		// gdy lancuch zaaplikowal wszystko sam, roznica = 0 (zero podwojnego
+		// liczenia); gdy wyzerowal - dokladamy calosc. Smierc domykamy DoDie,
+		// sciezka potwierdzona w grze przez Marvin-kill.
+		int warPhysExpected = 0;
+		const bool warTarget = damageMeta.Attacker && damageMeta.Attacker->IsSelfPlayer()
+			&& !this->IsSelfPlayer() && StExt_IsDhWarTargetNpc(this);
+		if (warTarget && IsDamageDescriptorSane(desc))
+		{
+			static const int warPhysIdx[3] = { oEDamageIndex_Blunt, oEDamageIndex_Edge, oEDamageIndex_Point };
+			bool anyPhys = false;
+			for (int k = 0; k < 3; ++k)
+			{
+				const int i = warPhysIdx[k];
+				if ((desc.enuModeDamage & (1UL << i)) == 0) continue;
+				int d = (int)desc.aryDamage[i];
+				if (d <= 0) continue;
+				anyPhys = true;
+				const int prot = this->protection[i];
+				if (prot > 0) d -= prot;
+				if (d > 0) warPhysExpected += d;
+			}
+			// Cios fizyczny byl, ale pancerz zjadl go w calosci - cel wojny i tak
+			// krwawi: minimum 1% maksymalnego HP na cios.
+			if (anyPhys && warPhysExpected <= 0)
+				warPhysExpected = this->attribute[NPC_ATR_HITPOINTSMAX] / 100 + 1;
+		}
+
 		// Original damage handler
 		const int diagHpBefore = (this && IsNpcPointerValid(this)) ? this->attribute[NPC_ATR_HITPOINTS] : 0;
 		DEBUG_MSG_DAM("OnDamage", "ENTER.", desc.pNpcAttacker, this);
@@ -1229,6 +1286,25 @@ namespace Gothic_II_Addon
 		// TEMP DIAG: what the target actually lost, i.e. the number after armour
 		if (this && IsNpcPointerValid(this))
 			StExt_DamageDiagApplied(diagHpBefore - this->attribute[NPC_ATR_HITPOINTS]);
+
+		// KRUCJATA: doloz obrazenia, ktorych lancuch nie zaaplikowal, i domknij
+		// smierc. Trace DH-WARHIT pokazuje kazdy cios w cel wojny (exp/lost/hp).
+		if (warTarget && (warPhysExpected > 0) && IsNpcPointerValid(this)
+			&& (this->attribute[NPC_ATR_HITPOINTS] > 0))
+		{
+			const int warLost = diagHpBefore - this->attribute[NPC_ATR_HITPOINTS];
+			const int warShortfall = warPhysExpected - (warLost > 0 ? warLost : 0);
+			if (warShortfall > 0)
+			{
+				int newHp = this->attribute[NPC_ATR_HITPOINTS] - warShortfall;
+				if (newHp < 0) newHp = 0;
+				StExt_Trace(zSTRING("DH-WARHIT ") + parser->GetSymbol(this->instanz)->name
+					+ " exp=" + Z(warPhysExpected) + " lost=" + Z(warLost)
+					+ " hp=" + Z(this->attribute[NPC_ATR_HITPOINTS]) + " -> " + Z(newHp));
+				this->attribute[NPC_ATR_HITPOINTS] = newHp;
+				if (newHp <= 0) this->DoDie(damageMeta.Attacker);
+			}
+		}
 
 
 		UpdateDamageInfo(damageMeta.DamageInfo, desc);
