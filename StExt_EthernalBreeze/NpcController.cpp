@@ -408,6 +408,27 @@ namespace Gothic_II_Addon
     // Jednorazowa zgoda na egzekucje celu wojny (podloga 0, DoDie jeszcze nie byl).
     bool StExt_WarRatchetExecuteDue(void* npc);
 
+    // Czlonkostwo w gniezdzie krucjaty (lowcy + obstawa) po npc->instanz -
+    // indeksy symboli cachowane raz, porownania to same inty (zero kosztu).
+    static bool StExt_IsDhNestMember(oCNpc* npc)
+    {
+        if (!npc) return false;
+        static int ids[10] = { -2 };
+        if (ids[0] == -2)
+        {
+            static const char* names[10] = {
+                "DH_MAINNPC", "DH_NPCSEVERIN", "DH_VILANDNPC",
+                "DH_SLD_MERCENARY_01", "DH_SLD_MERCENARY_02",
+                "BDT_99790_LOWCADEMONOW1", "BDT_99791_LOWCADEMONOW2",
+                "BDT_99792_LOWCADEMONOW3", "BDT_99793_LOWCADEMONOW4",
+                "BDT_99794_BELMOND" };
+            for (int i = 0; i < 10; ++i) ids[i] = parser->GetIndex(names[i]);
+        }
+        for (int i = 0; i < 10; ++i)
+            if ((ids[i] > 0) && (npc->instanz == ids[i])) return true;
+        return false;
+    }
+
     HOOK Hook_oCNpc_ProcessNpc PATCH(&oCNpc::ProcessNpc, &oCNpc::ProcessNpc_StExt);
     void oCNpc::ProcessNpc_StExt()
     {
@@ -436,6 +457,14 @@ namespace Gothic_II_Addon
                 StExt_Trace(zSTRING("DH-DODIE egzekucja celu wojny (ProcessNpc)"));
                 this->DoDie(oCNpc::player);
             }
+
+            // ROZJEMCA GNIAZDA (per klatka): jednorazowe czyszczenie kolejek
+            // AI nie wystarczylo - silnik pamieta wroga (oCNpc::enemy,
+            // zapisywany w sejwie) i percepcja wznawia bojke po unifikacji
+            // gildii. Czlonek gniazda nie moze miec za wroga innego czlonka;
+            // wrogosc do gracza zostaje nietknieta.
+            if (this->enemy && StExt_IsDhNestMember(this) && StExt_IsDhNestMember(this->enemy))
+                this->SetEnemy(Null);
         }
 
         if (this && !this->IsDead())
